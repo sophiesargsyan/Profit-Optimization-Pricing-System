@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+
+{% block title %}{{ t["brand.name"] }} | {{ t["title.dashboard"] }}{% endblock %}
+
+{% block content %}
+<section class="section-space">
+    <div class="container">
+        <div class="page-heading mb-4">
+            <span class="eyebrow-pill">{{ t["dashboard.eyebrow"] }}</span>
+            <h1>{{ t["dashboard.title"] }}</h1>
+            <p>{{ t["dashboard.subtitle"] }}</p>
+        </div>
+
+        <div class="row g-4 mb-4">
+            <div class="col-md-6 col-xl-3">
+                <div class="app-card h-100">
+                    <span class="metric-label">{{ t["dashboard.module1.label"] }}</span>
+                    <h3 class="card-title mt-2">{{ t["dashboard.module1.title"] }}</h3>
+                    <p class="text-muted mb-0">{{ t["dashboard.module1.description"] }}</p>
+                </div>
+            </div>
+            <div class="col-md-6 col-xl-3">
+                <div class="app-card h-100">
+                    <span class="metric-label">{{ t["dashboard.module2.label"] }}</span>
+                    <h3 class="card-title mt-2">{{ t["dashboard.module2.title"] }}</h3>
+                    <p class="text-muted mb-0">{{ t["dashboard.module2.description"] }}</p>
+                </div>
+            </div>
+            <div class="col-md-6 col-xl-3">
+                <div class="app-card h-100">
+                    <span class="metric-label">{{ t["dashboard.module3.label"] }}</span>
+                    <h3 class="card-title mt-2">{{ t["dashboard.module3.title"] }}</h3>
+                    <p class="text-muted mb-0">{{ t["dashboard.module3.description"] }}</p>
+                </div>
+            </div>
+            <div class="col-md-6 col-xl-3">
+                <div class="app-card h-100">
+                    <span class="metric-label">{{ t["dashboard.module4.label"] }}</span>
+                    <h3 class="card-title mt-2">{{ t["dashboard.module4.title"] }}</h3>
+                    <p class="text-muted mb-0">{{ t["dashboard.module4.description"] }}</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="app-card mb-4">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <div>
+                    <h2 class="section-title mb-1">{{ t["dashboard.sample_snapshot"] }}</h2>
+                    <p class="text-muted mb-0">{{ t["dashboard.sample_snapshot_subtitle"] }}</p>
+                </div>
+                <span class="soft-badge">{{ demo_analysis.product.name }}</span>
+            </div>
+
+            <div class="row g-3">
+                <div class="col-md-6 col-xl-3">
+                    <div class="metric-card">
+                        <span class="metric-label">{{ t["dashboard.best_strategy"] }}</span>
+                        <h3>{{ t["strategy." ~ demo_analysis.best_strategy.strategy] }}</h3>
+                        <p class="text-muted mb-0">{{ t["dashboard.recommended_price"] }}: ${{ demo_analysis.best_strategy.price }}</p>
+                    </div>
+                </div>
+                <div class="col-md-6 col-xl-3">
+                    <div class="metric-card">
+                        <span class="metric-label">{{ t["dashboard.expected_profit"] }}</span>
+                        <h3>${{ demo_analysis.best_strategy.profit }}</h3>
+                        <p class="text-muted mb-0">{{ t["dashboard.profit_margin"] }}: {{ demo_analysis.best_strategy.profit_margin }}%</p>
+                    </div>
+                </div>
+                <div class="col-md-6 col-xl-3">
+                    <div class="metric-card">
+                        <span class="metric-label">{{ t["dashboard.roi"] }}</span>
+                        <h3>{{ demo_analysis.best_strategy.ROI }}%</h3>
+                        <p class="text-muted mb-0">{{ t["dashboard.break_even"] }}: {{ demo_analysis.best_strategy.break_even_units or t["common.not_available"] }} {{ t["dashboard.units"] }}</p>
+                    </div>
+                </div>
+                <div class="col-md-6 col-xl-3">
+                    <div class="metric-card">
+                        <span class="metric-label">{{ t["dashboard.risk_level"] }}</span>
+                        <h3>{{ t["risk." ~ demo_analysis.best_strategy.risk_level] }}</h3>
+                        <p class="text-muted mb-0">{{ t["dashboard.risk_score"] }}: {{ demo_analysis.best_strategy.risk_score }}/100</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="app-card">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <div>
+                    <h2 class="section-title mb-1">{{ t["dashboard.scenario_overview"] }}</h2>
+                    <p class="text-muted mb-0">{{ t["dashboard.scenario_overview_subtitle"] }}</p>
+                </div>
+                <span class="soft-badge">{{ t["dashboard.winning_scenario"] }}: {{ t["scenario." ~ demo_scenarios.winning_scenario] }}</span>
+            </div>
+
+            <div class="row g-3">
+                {% for scenario in demo_scenarios.scenarios %}
+                <div class="col-md-6 col-xl-3">
+                    <div class="scenario-mini-card h-100">
+                        <div class="d-flex justify-content-between align-items-start mb-3">
+                            <div>
+                                <span class="metric-label">{{ t["scenario." ~ scenario.scenario] }}</span>
+                                <h3 class="mt-2 mb-0">{{ t["strategy." ~ scenario.best_strategy] }}</h3>
+                            </div>
+                            <span class="risk-pill risk-{{ scenario.risk_level|lower }}">{{ t["risk." ~ scenario.risk_level] }}</span>
+                        </div>
+                        <p class="mb-1">{{ t["dashboard.price"] }}: ${{ scenario.price }}</p>
+                        <p class="mb-1">{{ t["dashboard.profit"] }}: ${{ scenario.profit }}</p>
+                        <p class="mb-0">{{ t["dashboard.revenue"] }}: ${{ scenario.revenue }}</p>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}

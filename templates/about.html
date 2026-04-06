@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+
+{% block title %}{{ t["brand.name"] }} | {{ t["title.about"] }}{% endblock %}
+
+{% block content %}
+<section class="section-space">
+    <div class="container">
+        <div class="page-heading mb-4">
+            <span class="eyebrow-pill">{{ t["about.eyebrow"] }}</span>
+            <h1>{{ t["about.title"] }}</h1>
+            <p>{{ t["about.subtitle"] }}</p>
+        </div>
+
+        <div class="row g-4">
+            <div class="col-lg-6">
+                <div class="app-card h-100">
+                    <h2 class="section-title">{{ t["about.thesis_purpose.title"] }}</h2>
+                    <p>{{ t["about.thesis_purpose.paragraph1"] }}</p>
+                    <p class="mb-0">{{ t["about.thesis_purpose.paragraph2"] }}</p>
+                </div>
+            </div>
+
+            <div class="col-lg-6">
+                <div class="app-card h-100">
+                    <h2 class="section-title">{{ t["about.core_functions.title"] }}</h2>
+                    <ul class="clean-list mb-0">
+                        <li>{{ t["about.core_functions.item1"] }}</li>
+                        <li>{{ t["about.core_functions.item2"] }}</li>
+                        <li>{{ t["about.core_functions.item3"] }}</li>
+                        <li>{{ t["about.core_functions.item4"] }}</li>
+                        <li>{{ t["about.core_functions.item5"] }}</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="col-12">
+                <div class="app-card">
+                    <h2 class="section-title">{{ t["about.technologies.title"] }}</h2>
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <div class="tech-tile">
+                                <span class="metric-label">{{ t["about.technologies.backend.label"] }}</span>
+                                <h3>{{ t["about.technologies.backend.name"] }}</h3>
+                                <p class="mb-0">{{ t["about.technologies.backend.description"] }}</p>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="tech-tile">
+                                <span class="metric-label">{{ t["about.technologies.frontend.label"] }}</span>
+                                <h3>{{ t["about.technologies.frontend.name"] }}</h3>
+                                <p class="mb-0">{{ t["about.technologies.frontend.description"] }}</p>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="tech-tile">
+                                <span class="metric-label">{{ t["about.technologies.visualization.label"] }}</span>
+                                <h3>{{ t["about.technologies.visualization.name"] }}</h3>
+                                <p class="mb-0">{{ t["about.technologies.visualization.description"] }}</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}

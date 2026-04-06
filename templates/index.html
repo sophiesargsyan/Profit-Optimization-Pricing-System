@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+
+{% block title %}{{ t["brand.name"] }} | {{ t["title.home"] }}{% endblock %}
+
+{% block content %}
+<section class="hero-section">
+    <div class="container">
+        <div class="hero-card text-center">
+            <span class="eyebrow-pill">{{ t["home.eyebrow"] }}</span>
+            <h1 class="hero-title">{{ t["home.title"] }}</h1>
+            <p class="hero-subtitle">{{ t["home.subtitle"] }}</p>
+            <div class="hero-actions">
+                <a href="{{ localized_url('analyze_page') }}" class="btn btn-dark btn-lg px-4">{{ t["home.start_analysis"] }}</a>
+                <a href="{{ localized_url('about_page') }}" class="btn btn-outline-secondary btn-lg px-4">{{ t["home.learn_more"] }}</a>
+            </div>
+        </div>
+
+        <div class="row g-4 feature-row">
+            <div class="col-md-4">
+                <div class="feature-card h-100">
+                    <div class="feature-icon">01</div>
+                    <h3>{{ t["home.feature1.title"] }}</h3>
+                    <p>{{ t["home.feature1.description"] }}</p>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="feature-card h-100">
+                    <div class="feature-icon">02</div>
+                    <h3>{{ t["home.feature2.title"] }}</h3>
+                    <p>{{ t["home.feature2.description"] }}</p>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="feature-card h-100">
+                    <div class="feature-icon">03</div>
+                    <h3>{{ t["home.feature3.title"] }}</h3>
+                    <p>{{ t["home.feature3.description"] }}</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}
