@@ -482,14 +482,17 @@ function setLoading(isLoading) {
     analyzeBtn.textContent = isLoading ? tr("js.analyzing") : tr("analyze.run_full_analysis");
 }
 
-async function runAnalysis(form) {
+async function runAnalysis(form, options = {}) {
     setAlert("");
     setLoading(true);
     setStatus(tr("js.running_analysis"));
 
     try {
         const payload = formPayload(form);
-        const data = await postJson("/api/analyze", payload);
+        const data = await postJson("/api/analyze", {
+            ...payload,
+            save_history: options.saveHistory !== false,
+        });
         renderBestStrategyHighlight(data);
         renderSummaryCards(data);
         renderExplanation(data);
@@ -537,7 +540,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     form.addEventListener("submit", async (event) => {
         event.preventDefault();
-        await runAnalysis(form);
+        await runAnalysis(form, { saveHistory: true });
     });
 
     const scenarioButton = document.getElementById("scenarioCompareBtn");
@@ -547,5 +550,5 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 
-    runAnalysis(form);
+    runAnalysis(form, { saveHistory: false });
 });

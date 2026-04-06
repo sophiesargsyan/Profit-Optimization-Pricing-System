@@ -1,0 +1,297 @@
+{% extends "base.html" %}
+
+{% block title %}{{ t["brand.name"] }} | {{ t["title.portfolio"] }}{% endblock %}
+
+{% block content %}
+<section class="section-space">
+    <div class="container">
+        <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
+            <div class="page-heading mb-0">
+                <span class="eyebrow-pill">{{ t["portfolio.eyebrow"] }}</span>
+                <h1>{{ t["portfolio.title"] }}</h1>
+                <p>{{ t["portfolio.subtitle"] }}</p>
+            </div>
+            <div class="action-group">
+                <a href="{{ localized_url('portfolio_export_csv') }}" class="btn btn-outline-secondary">{{ t["portfolio.export_comparison_csv"] }}</a>
+                <a href="{{ localized_url('history_export_csv') }}" class="btn btn-outline-secondary">{{ t["portfolio.export_history_csv"] }}</a>
+                <a href="{{ localized_url('history_export_json') }}" class="btn btn-dark">{{ t["portfolio.export_history_json"] }}</a>
+            </div>
+        </div>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+        <div class="flash-stack mb-4">
+            {% for category, message in messages %}
+            <div class="alert alert-{{ 'success' if category == 'success' else 'danger' }} mb-2" role="alert">{{ message }}</div>
+            {% endfor %}
+        </div>
+        {% endif %}
+        {% endwith %}
+
+        {% if error_message %}
+        <div class="alert alert-danger mb-4" role="alert">{{ error_message }}</div>
+        {% endif %}
+
+        <div class="row g-3 mb-4">
+            <div class="col-md-6 col-xl-3">
+                <div class="metric-card summary-card summary-card-primary">
+                    <span class="metric-label">{{ t["portfolio.summary.total_products"] }}</span>
+                    <div class="metric-value">{{ portfolio_summary.total_products }}</div>
+                    <p class="metric-note">{{ t["portfolio.summary.total_products_note"] }}</p>
+                </div>
+            </div>
+            <div class="col-md-6 col-xl-3">
+                <div class="metric-card summary-card">
+                    <span class="metric-label">{{ t["portfolio.summary.projected_revenue"] }}</span>
+                    <div class="metric-value">${{ portfolio_summary.projected_revenue }}</div>
+                    <p class="metric-note">{{ t["portfolio.summary.projected_revenue_note"] }}</p>
+                </div>
+            </div>
+            <div class="col-md-6 col-xl-3">
+                <div class="metric-card summary-card">
+                    <span class="metric-label">{{ t["portfolio.summary.projected_profit"] }}</span>
+                    <div class="metric-value">${{ portfolio_summary.projected_profit }}</div>
+                    <p class="metric-note">{{ t["portfolio.summary.projected_profit_note"] }}</p>
+                </div>
+            </div>
+            <div class="col-md-6 col-xl-3">
+                <div class="metric-card summary-card">
+                    <span class="metric-label">{{ t["portfolio.summary.low_risk_products"] }}</span>
+                    <div class="metric-value">{{ portfolio_summary.low_risk_products }}</div>
+                    <p class="metric-note">{{ t["portfolio.summary.low_risk_products_note"] }}</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="row g-4 align-items-start">
+            <div class="col-lg-4">
+                <div class="app-card sticky-panel">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h2 class="section-title mb-0">
+                            {% if editing_product %}{{ t["portfolio.form.title_edit"] }}{% else %}{{ t["portfolio.form.title_add"] }}{% endif %}
+                        </h2>
+                        <span class="soft-badge">
+                            {% if editing_product %}{{ t["portfolio.form.badge_edit"] }}{% else %}{{ t["portfolio.form.badge_add"] }}{% endif %}
+                        </span>
+                    </div>
+                    <p class="text-muted mb-3">{{ t["portfolio.form.subtitle"] }}</p>
+
+                    <form method="post" action="{{ localized_url('portfolio_save') }}" class="row g-3">
+                        <input type="hidden" name="product_id" value="{{ editing_product.id if editing_product else '' }}">
+
+                        <div class="col-12">
+                            <label class="form-label" for="name">{{ t["form.product_name"] }}</label>
+                            <input class="form-control" type="text" id="name" name="name" value="{{ form_values.name or '' }}" required>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label" for="category">{{ t["form.category"] }}</label>
+                            <input class="form-control" type="text" id="category" name="category" value="{{ form_values.category or '' }}" required>
+                        </div>
+                        <div class="col-sm-6">
+                            <label class="form-label" for="unit_cost">{{ t["form.unit_cost"] }}</label>
+                            <input class="form-control" type="number" id="unit_cost" name="unit_cost" value="{{ form_values.unit_cost or '' }}" min="0" step="0.01" required>
+                        </div>
+                        <div class="col-sm-6">
+                            <label class="form-label" for="fixed_cost">{{ t["form.fixed_cost"] }}</label>
+                            <input class="form-control" type="number" id="fixed_cost" name="fixed_cost" value="{{ form_values.fixed_cost or '' }}" min="0" step="0.01" required>
+                        </div>
+                        <div class="col-sm-6">
+                            <label class="form-label" for="base_price">{{ t["form.base_price"] }}</label>
+                            <input class="form-control" type="number" id="base_price" name="base_price" value="{{ form_values.base_price or '' }}" min="0.01" step="0.01" required>
+                        </div>
+                        <div class="col-sm-6">
+                            <label class="form-label" for="competitor_price">{{ t["form.competitor_price"] }}</label>
+                            <input class="form-control" type="number" id="competitor_price" name="competitor_price" value="{{ form_values.competitor_price or '' }}" min="0.01" step="0.01" required>
+                        </div>
+                        <div class="col-sm-6">
+                            <label class="form-label" for="base_demand">{{ t["form.base_demand"] }}</label>
+                            <input class="form-control" type="number" id="base_demand" name="base_demand" value="{{ form_values.base_demand or '' }}" min="1" step="1" required>
+                        </div>
+                        <div class="col-sm-6">
+                            <label class="form-label" for="inventory">{{ t["form.inventory"] }}</label>
+                            <input class="form-control" type="number" id="inventory" name="inventory" value="{{ form_values.inventory or '' }}" min="1" step="1" required>
+                        </div>
+                        <div class="col-sm-6">
+                            <label class="form-label" for="elasticity">{{ t["form.elasticity"] }}</label>
+                            <input class="form-control" type="number" id="elasticity" name="elasticity" value="{{ form_values.elasticity or '' }}" step="0.01" required>
+                        </div>
+                        <div class="col-sm-6">
+                            <label class="form-label" for="marketing_budget">{{ t["form.marketing_budget"] }}</label>
+                            <input class="form-control" type="number" id="marketing_budget" name="marketing_budget" value="{{ form_values.marketing_budget or '' }}" min="0" step="0.01" required>
+                        </div>
+                        <div class="col-sm-6">
+                            <label class="form-label" for="return_rate">{{ t["form.return_rate"] }}</label>
+                            <input class="form-control" type="number" id="return_rate" name="return_rate" value="{{ form_values.return_rate or '' }}" min="0" max="0.49" step="0.01" required>
+                        </div>
+                        <div class="col-sm-6">
+                            <label class="form-label" for="desired_margin">{{ t["form.desired_margin"] }}</label>
+                            <input class="form-control" type="number" id="desired_margin" name="desired_margin" value="{{ form_values.desired_margin or '' }}" min="1" max="89" step="0.1" required>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label" for="scenario">{{ t["form.scenario"] }}</label>
+                            <select class="form-select" id="scenario" name="scenario">
+                                <option value="LOW" {% if form_values.scenario == "LOW" %}selected{% endif %}>{{ t["scenario.LOW"] }}</option>
+                                <option value="NORMAL" {% if form_values.scenario == "NORMAL" %}selected{% endif %}>{{ t["scenario.NORMAL"] }}</option>
+                                <option value="HIGH" {% if form_values.scenario == "HIGH" %}selected{% endif %}>{{ t["scenario.HIGH"] }}</option>
+                                <option value="PROMO" {% if form_values.scenario == "PROMO" %}selected{% endif %}>{{ t["scenario.PROMO"] }}</option>
+                            </select>
+                        </div>
+
+                        <div class="col-12 d-grid gap-2">
+                            <button type="submit" class="btn btn-dark btn-lg">
+                                {% if editing_product %}{{ t["portfolio.form.update"] }}{% else %}{{ t["portfolio.form.save"] }}{% endif %}
+                            </button>
+                            {% if editing_product %}
+                            <a href="{{ localized_url('portfolio_page') }}" class="btn btn-outline-secondary">{{ t["portfolio.form.cancel_edit"] }}</a>
+                            {% endif %}
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <div class="col-lg-8">
+                <div class="app-card mb-4">
+                    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+                        <div>
+                            <h2 class="section-title mb-1">{{ t["portfolio.list.title"] }}</h2>
+                            <p class="text-muted mb-0">{{ t["portfolio.list.subtitle"] }}</p>
+                        </div>
+                        <span class="soft-badge">{{ portfolio_summary.total_products }} {{ t["portfolio.list.items"] }}</span>
+                    </div>
+
+                    {% if portfolio_products %}
+                    <div class="table-responsive">
+                        <table class="table align-middle comparison-table mb-0">
+                            <thead>
+                                <tr>
+                                    <th>{{ t["table.product"] }}</th>
+                                    <th>{{ t["form.category"] }}</th>
+                                    <th>{{ t["table.scenario"] }}</th>
+                                    <th>{{ t["table.base_price"] }}</th>
+                                    <th>{{ t["table.updated"] }}</th>
+                                    <th>{{ t["table.actions"] }}</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for product in portfolio_products %}
+                                <tr>
+                                    <td class="fw-semibold">{{ product.name }}</td>
+                                    <td>{{ product.category }}</td>
+                                    <td>{{ t["scenario." ~ product.scenario] }}</td>
+                                    <td>${{ product.base_price }}</td>
+                                    <td>{{ product.updated_at|replace('T', ' ') }}</td>
+                                    <td>
+                                        <div class="table-actions">
+                                            <a href="{{ localized_url('analyze_page', product_id=product.id) }}" class="btn btn-sm btn-dark">{{ t["portfolio.actions.analyze"] }}</a>
+                                            <a href="{{ localized_url('portfolio_page', edit=product.id) }}" class="btn btn-sm btn-outline-secondary">{{ t["portfolio.actions.edit"] }}</a>
+                                            <form method="post" action="{{ localized_url('portfolio_delete', product_id=product.id) }}" onsubmit="return confirm('{{ t["portfolio.messages.delete_confirm"] }}')">
+                                                <button type="submit" class="btn btn-sm btn-outline-danger">{{ t["portfolio.actions.delete"] }}</button>
+                                            </form>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="empty-state empty-state-block">{{ t["portfolio.list.empty"] }}</div>
+                    {% endif %}
+                </div>
+
+                <div class="app-card mb-4">
+                    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+                        <div>
+                            <h2 class="section-title mb-1">{{ t["portfolio.comparison.title"] }}</h2>
+                            <p class="text-muted mb-0">{{ t["portfolio.comparison.subtitle"] }}</p>
+                        </div>
+                        <span class="soft-badge">{{ t["portfolio.comparison.badge"] }}</span>
+                    </div>
+
+                    {% if comparison_rows %}
+                    <div class="table-responsive">
+                        <table class="table align-middle comparison-table mb-0">
+                            <thead>
+                                <tr>
+                                    <th>{{ t["table.product"] }}</th>
+                                    <th>{{ t["table.scenario"] }}</th>
+                                    <th>{{ t["table.base_price"] }}</th>
+                                    <th>{{ t["table.recommended_price"] }}</th>
+                                    <th>{{ t["table.expected_demand"] }}</th>
+                                    <th>{{ t["table.expected_revenue"] }}</th>
+                                    <th>{{ t["table.expected_profit"] }}</th>
+                                    <th>{{ t["table.margin"] }}</th>
+                                    <th>{{ t["table.risk"] }}</th>
+                                    <th>{{ t["table.strategy"] }}</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for row in comparison_rows %}
+                                <tr>
+                                    <td class="fw-semibold">{{ row.product_name }}</td>
+                                    <td>{{ t["scenario." ~ row.scenario] }}</td>
+                                    <td>${{ row.base_price }}</td>
+                                    <td>${{ row.recommended_price }}</td>
+                                    <td>{{ row.expected_demand }}</td>
+                                    <td>${{ row.expected_revenue }}</td>
+                                    <td>${{ row.expected_profit }}</td>
+                                    <td>{{ row.margin }}%</td>
+                                    <td><span class="risk-pill risk-{{ row.risk_level|lower }}">{{ t["risk." ~ row.risk_level] }}</span></td>
+                                    <td>{{ t["strategy." ~ row.recommended_strategy] }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="empty-state empty-state-block">{{ t["portfolio.comparison.empty"] }}</div>
+                    {% endif %}
+                </div>
+
+                <div class="app-card">
+                    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+                        <div>
+                            <h2 class="section-title mb-1">{{ t["portfolio.history.title"] }}</h2>
+                            <p class="text-muted mb-0">{{ t["portfolio.history.subtitle"] }}</p>
+                        </div>
+                        <span class="soft-badge">{{ portfolio_summary.history_entries }} {{ t["portfolio.history.entries"] }}</span>
+                    </div>
+
+                    {% if history_entries %}
+                    <div class="table-responsive">
+                        <table class="table align-middle comparison-table mb-0">
+                            <thead>
+                                <tr>
+                                    <th>{{ t["table.timestamp"] }}</th>
+                                    <th>{{ t["table.product"] }}</th>
+                                    <th>{{ t["table.scenario"] }}</th>
+                                    <th>{{ t["table.strategy"] }}</th>
+                                    <th>{{ t["table.recommended_price"] }}</th>
+                                    <th>{{ t["table.expected_profit"] }}</th>
+                                    <th>{{ t["table.risk"] }}</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for entry in history_entries %}
+                                <tr>
+                                    <td>{{ entry.timestamp|replace('T', ' ') }}</td>
+                                    <td class="fw-semibold">{{ entry.product_name }}</td>
+                                    <td>{{ t["scenario." ~ entry.selected_scenario] }}</td>
+                                    <td>{{ t["strategy." ~ entry.recommended_strategy] }}</td>
+                                    <td>${{ entry.recommended_price }}</td>
+                                    <td>${{ entry.expected_profit }}</td>
+                                    <td><span class="risk-pill risk-{{ entry.risk_level|lower }}">{{ t["risk." ~ entry.risk_level] }}</span></td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="empty-state empty-state-block">{{ t["portfolio.history.empty"] }}</div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}

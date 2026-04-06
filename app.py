@@ -1,12 +1,39 @@
 import json
 import os
 import secrets
+from dataclasses import asdict
 from functools import lru_cache
 from pathlib import Path
 
-from flask import Flask, g, jsonify, render_template, request, session, url_for
+from flask import (
+    Flask,
+    Response,
+    flash,
+    g,
+    jsonify,
+    redirect,
+    render_template,
+    request,
+    session,
+    url_for,
+)
 
+from export_service import history_to_csv, history_to_json, portfolio_analysis_to_csv
+from history_storage import append_history_entry, load_history
+from portfolio_storage import (
+    add_portfolio_product,
+    delete_portfolio_product,
+    get_portfolio_product,
+    load_portfolio,
+    update_portfolio_product,
+)
 from pricing_engine import ProductData, compare_all_scenarios, run_full_analysis
+from product_defaults import DEFAULT_PRODUCT, EMPTY_PRODUCT
+from workspace_service import (
+    build_history_entry,
+    build_portfolio_comparison,
+    summarize_portfolio,
+)
 
 app = Flask(__name__)
 app.config["JSON_SORT_KEYS"] = False
@@ -14,13 +41,19 @@ app.config["JSON_SORT_KEYS"] = False
 app.config["SECRET_KEY"] = os.environ.get("FLASK_SECRET_KEY") or secrets.token_hex(32)
 app.config["MAX_CONTENT_LENGTH"] = 64 * 1024
 
+BASE_DIR = Path(__file__).resolve().parent
+DATA_DIR = BASE_DIR / "data"
+
 DEFAULT_LANG = "en"
 SUPPORTED_LANGUAGES = {
     "en": "English",
     "hy": "Հայերեն",
     "ru": "Русский",
 }
-TRANSLATIONS_DIR = Path(__file__).resolve().parent / "translations"
+TRANSLATIONS_DIR = BASE_DIR / "translations"
+
+app.config.setdefault("PORTFOLIO_FILE", DATA_DIR / "portfolio.json")
+app.config.setdefault("HISTORY_FILE", DATA_DIR / "history.json")
 
 STRING_FIELDS = {
     "name": {"default": "Product", "label": "Product name", "max_length": 120},
@@ -48,23 +81,7 @@ NUMERIC_FIELDS = {
     "return_rate": {"label": "Return rate", "min": 0, "max": 0.49, "type": float},
     "desired_margin": {"label": "Desired margin", "min": 0.1, "max": 89.9, "type": float},
 }
-
-
-DEFAULT_PRODUCT = {
-    "name": "Smart Thermos Bottle",
-    "category": "Home & Lifestyle",
-    "unit_cost": 18.0,
-    "fixed_cost": 3200.0,
-    "base_price": 39.0,
-    "competitor_price": 36.0,
-    "base_demand": 420.0,
-    "inventory": 500,
-    "elasticity": -1.35,
-    "marketing_budget": 1400.0,
-    "return_rate": 0.06,
-    "desired_margin": 28.0,
-    "scenario": "NORMAL",
-}
+PRODUCT_FORM_FIELDS = tuple(STRING_FIELDS.keys()) + tuple(NUMERIC_FIELDS.keys()) + ("scenario",)
 
 
 @lru_cache(maxsize=None)
@@ -139,6 +156,43 @@ def api_success(data, status=200):
 
 def api_error(message, status=400):
     return jsonify({"success": False, "data": None, "error": message}), status
+
+
+def get_portfolio_file():
+    return Path(app.config["PORTFOLIO_FILE"])
+
+
+def get_history_file():
+    return Path(app.config["HISTORY_FILE"])
+
+
+def _boolean_input(value, default=True):
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"1", "true", "yes", "on"}:
+            return True
+        if normalized in {"0", "false", "no", "off"}:
+            return False
+    return bool(value)
+
+
+def _portfolio_form_values(source=None):
+    values = dict(EMPTY_PRODUCT)
+    if source is None:
+        return values
+
+    for field in PRODUCT_FORM_FIELDS:
+        if field in source:
+            values[field] = source.get(field)
+    return values
+
+
+def _sort_portfolio_products(products):
+    return sorted(products, key=lambda item: item.get("updated_at", ""), reverse=True)
 
 
 def build_localized_explanation(result, lang):
@@ -348,6 +402,38 @@ def build_demo_product():
     return parse_product(DEFAULT_PRODUCT)
 
 
+def render_portfolio_workspace(form_values=None, edit_product_id=None, error_message=None, status=200):
+    portfolio_products = _sort_portfolio_products(load_portfolio(get_portfolio_file()))
+    comparison_rows = build_portfolio_comparison(portfolio_products) if portfolio_products else []
+    history_entries = list(reversed(load_history(get_history_file())))
+    editing_product = (
+        get_portfolio_product(get_portfolio_file(), edit_product_id) if edit_product_id else None
+    )
+
+    return (
+        render_template(
+            "portfolio.html",
+            page_name="portfolio",
+            portfolio_products=portfolio_products,
+            comparison_rows=comparison_rows,
+            history_entries=history_entries,
+            portfolio_summary=summarize_portfolio(comparison_rows, history_entries),
+            form_values=_portfolio_form_values(form_values or editing_product),
+            editing_product=editing_product,
+            error_message=error_message,
+        ),
+        status,
+    )
+
+
+def download_response(content, filename, mimetype):
+    return Response(
+        content,
+        mimetype=mimetype,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 @app.route("/")
 def index():
     return render_template("index.html", page_name="home")
@@ -355,11 +441,107 @@ def index():
 
 @app.route("/analyze")
 def analyze_page():
+    product_id = request.args.get("product_id", "").strip()
+    selected_portfolio_product = (
+        get_portfolio_product(get_portfolio_file(), product_id) if product_id else None
+    )
+    default_values = (
+        _portfolio_form_values(selected_portfolio_product)
+        if selected_portfolio_product
+        else dict(DEFAULT_PRODUCT)
+    )
     return render_template(
         "analyze.html",
         page_name="analyze",
-        default_values=DEFAULT_PRODUCT,
+        default_values=default_values,
+        selected_portfolio_product=selected_portfolio_product,
     )
+
+
+@app.route("/portfolio")
+def portfolio_page():
+    edit_product_id = request.args.get("edit", "").strip() or None
+    return render_portfolio_workspace(edit_product_id=edit_product_id)
+
+
+@app.route("/portfolio/save", methods=["POST"])
+def portfolio_save():
+    product_id = request.form.get("product_id", "").strip() or None
+
+    try:
+        product = parse_product(request.form.to_dict(flat=True))
+        payload = asdict(product)
+
+        if product_id:
+            update_portfolio_product(get_portfolio_file(), product_id, payload)
+            flash(
+                translated_message(
+                    "portfolio.messages.updated",
+                    "Product updated in the portfolio.",
+                ),
+                "success",
+            )
+        else:
+            add_portfolio_product(get_portfolio_file(), payload)
+            flash(
+                translated_message(
+                    "portfolio.messages.added",
+                    "Product added to the portfolio.",
+                ),
+                "success",
+            )
+
+        return redirect(localized_url("portfolio_page"))
+    except KeyError:
+        flash(
+            translated_message(
+                "portfolio.messages.not_found",
+                "The selected product could not be found.",
+            ),
+            "danger",
+        )
+        return redirect(localized_url("portfolio_page"))
+    except ValueError as exc:
+        app.logger.info("Validation error on /portfolio/save: %s", exc)
+        return render_portfolio_workspace(
+            form_values=request.form.to_dict(flat=True),
+            edit_product_id=product_id,
+            error_message=str(exc),
+            status=400,
+        )
+
+
+@app.route("/portfolio/<product_id>/delete", methods=["POST"])
+def portfolio_delete(product_id):
+    deleted = delete_portfolio_product(get_portfolio_file(), product_id)
+    message_key = "portfolio.messages.deleted" if deleted else "portfolio.messages.not_found"
+    fallback = (
+        "Product deleted from the portfolio."
+        if deleted
+        else "The selected product could not be found."
+    )
+    flash(translated_message(message_key, fallback), "success" if deleted else "danger")
+    return redirect(localized_url("portfolio_page"))
+
+
+@app.route("/portfolio/export.csv")
+def portfolio_export_csv():
+    portfolio_products = _sort_portfolio_products(load_portfolio(get_portfolio_file()))
+    comparison_rows = build_portfolio_comparison(portfolio_products) if portfolio_products else []
+    csv_content = "\ufeff" + portfolio_analysis_to_csv(comparison_rows)
+    return download_response(csv_content, "pricepilot_portfolio_analysis.csv", "text/csv; charset=utf-8")
+
+
+@app.route("/history/export.csv")
+def history_export_csv():
+    csv_content = "\ufeff" + history_to_csv(load_history(get_history_file()))
+    return download_response(csv_content, "pricepilot_analysis_history.csv", "text/csv; charset=utf-8")
+
+
+@app.route("/history/export.json")
+def history_export_json():
+    json_content = history_to_json(load_history(get_history_file()))
+    return download_response(json_content, "pricepilot_analysis_history.json", "application/json; charset=utf-8")
 
 
 @app.route("/dashboard")
@@ -387,6 +569,10 @@ def api_analyze():
     try:
         product = parse_product(data)
         result = run_full_analysis(product)
+
+        if _boolean_input(data.get("save_history"), default=True):
+            append_history_entry(get_history_file(), build_history_entry(result))
+
         return api_success(localize_analysis_result(result, g.current_lang))
     except ValueError as exc:
         app.logger.info("Validation error on /api/analyze: %s", exc)

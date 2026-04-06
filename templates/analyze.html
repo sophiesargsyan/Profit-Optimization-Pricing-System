@@ -9,6 +9,12 @@
             <span class="eyebrow-pill">{{ t["analyze.eyebrow"] }}</span>
             <h1>{{ t["analyze.title"] }}</h1>
             <p>{{ t["analyze.subtitle"] }}</p>
+            <div class="action-group justify-content-start mt-3">
+                <a href="{{ localized_url('portfolio_page') }}" class="btn btn-outline-secondary">{{ t["analyze.open_portfolio"] }}</a>
+                {% if selected_portfolio_product %}
+                <span class="soft-badge">{{ t["analyze.loaded_from_portfolio"] }}: {{ selected_portfolio_product.name }}</span>
+                {% endif %}
+            </div>
         </div>
 
         <div class="row g-4 align-items-start">
