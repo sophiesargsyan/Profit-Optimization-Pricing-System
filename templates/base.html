@@ -27,7 +27,7 @@
                         <li class="nav-item"><a class="nav-link {% if page_name == 'about' %}active{% endif %}" href="{{ localized_url('about_page') }}">{{ t["nav.about"] }}</a></li>
                         <li class="nav-item dropdown">
                             <button class="btn btn-outline-secondary dropdown-toggle lang-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
-                                {{ t["nav.language"] }}: {{ supported_languages[current_lang] }}
+                                {{ supported_languages[current_lang] }}
                             </button>
                             <ul class="dropdown-menu dropdown-menu-end">
                                 {% for code, label in supported_languages.items() %}
