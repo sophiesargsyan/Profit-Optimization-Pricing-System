@@ -5,7 +5,7 @@
 {% block content %}
 <section class="section-space">
     <div class="container">
-        <div class="page-heading mb-4">
+        <div class="page-heading page-heading-left mb-4">
             <span class="eyebrow-pill">{{ t["analyze.eyebrow"] }}</span>
             <h1>{{ t["analyze.title"] }}</h1>
             <p>{{ t["analyze.subtitle"] }}</p>
@@ -20,10 +20,11 @@
         <div class="row g-4 align-items-start">
             <div class="col-lg-4">
                 <div class="app-card sticky-panel">
-                    <div class="d-flex justify-content-between align-items-center mb-3">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
                         <h2 class="section-title mb-0">{{ t["analyze.input_form"] }}</h2>
-                        <span class="soft-badge">{{ t["analyze.live_api"] }}</span>
+                        <span class="soft-badge">{{ t["analyze.input_badge"] }}</span>
                     </div>
+                    <p class="text-muted mb-3">{{ t["analyze.input_subtitle"] }}</p>
 
                     <div id="formAlert" class="alert alert-danger d-none" role="alert"></div>
 
@@ -31,50 +32,62 @@
                         <div class="col-12">
                             <label class="form-label" for="name">{{ t["form.product_name"] }}</label>
                             <input class="form-control" type="text" id="name" name="name" value="{{ default_values.name }}" required>
+                            <div class="form-helper">{{ t["form_hint.product_name"] }}</div>
                         </div>
                         <div class="col-12">
                             <label class="form-label" for="category">{{ t["form.category"] }}</label>
                             <input class="form-control" type="text" id="category" name="category" value="{{ default_values.category }}" required>
+                            <div class="form-helper">{{ t["form_hint.category"] }}</div>
                         </div>
                         <div class="col-sm-6">
                             <label class="form-label" for="unit_cost">{{ t["form.unit_cost"] }}</label>
                             <input class="form-control" type="number" id="unit_cost" name="unit_cost" value="{{ default_values.unit_cost }}" min="0" step="0.01" required>
+                            <div class="form-helper">{{ t["form_hint.unit_cost"] }}</div>
                         </div>
                         <div class="col-sm-6">
                             <label class="form-label" for="fixed_cost">{{ t["form.fixed_cost"] }}</label>
                             <input class="form-control" type="number" id="fixed_cost" name="fixed_cost" value="{{ default_values.fixed_cost }}" min="0" step="0.01" required>
+                            <div class="form-helper">{{ t["form_hint.fixed_cost"] }}</div>
                         </div>
                         <div class="col-sm-6">
                             <label class="form-label" for="base_price">{{ t["form.base_price"] }}</label>
                             <input class="form-control" type="number" id="base_price" name="base_price" value="{{ default_values.base_price }}" min="0.01" step="0.01" required>
+                            <div class="form-helper">{{ t["form_hint.base_price"] }}</div>
                         </div>
                         <div class="col-sm-6">
                             <label class="form-label" for="competitor_price">{{ t["form.competitor_price"] }}</label>
                             <input class="form-control" type="number" id="competitor_price" name="competitor_price" value="{{ default_values.competitor_price }}" min="0.01" step="0.01" required>
+                            <div class="form-helper">{{ t["form_hint.competitor_price"] }}</div>
                         </div>
                         <div class="col-sm-6">
                             <label class="form-label" for="base_demand">{{ t["form.base_demand"] }}</label>
                             <input class="form-control" type="number" id="base_demand" name="base_demand" value="{{ default_values.base_demand }}" min="1" step="1" required>
+                            <div class="form-helper">{{ t["form_hint.base_demand"] }}</div>
                         </div>
                         <div class="col-sm-6">
                             <label class="form-label" for="inventory">{{ t["form.inventory"] }}</label>
                             <input class="form-control" type="number" id="inventory" name="inventory" value="{{ default_values.inventory }}" min="1" step="1" required>
+                            <div class="form-helper">{{ t["form_hint.inventory"] }}</div>
                         </div>
                         <div class="col-sm-6">
                             <label class="form-label" for="elasticity">{{ t["form.elasticity"] }}</label>
                             <input class="form-control" type="number" id="elasticity" name="elasticity" value="{{ default_values.elasticity }}" step="0.01" required>
+                            <div class="form-helper">{{ t["form_hint.elasticity"] }}</div>
                         </div>
                         <div class="col-sm-6">
                             <label class="form-label" for="marketing_budget">{{ t["form.marketing_budget"] }}</label>
                             <input class="form-control" type="number" id="marketing_budget" name="marketing_budget" value="{{ default_values.marketing_budget }}" min="0" step="0.01" required>
+                            <div class="form-helper">{{ t["form_hint.marketing_budget"] }}</div>
                         </div>
                         <div class="col-sm-6">
                             <label class="form-label" for="return_rate">{{ t["form.return_rate"] }}</label>
                             <input class="form-control" type="number" id="return_rate" name="return_rate" value="{{ default_values.return_rate }}" min="0" max="0.49" step="0.01" required>
+                            <div class="form-helper">{{ t["form_hint.return_rate"] }}</div>
                         </div>
                         <div class="col-sm-6">
                             <label class="form-label" for="desired_margin">{{ t["form.desired_margin"] }}</label>
                             <input class="form-control" type="number" id="desired_margin" name="desired_margin" value="{{ default_values.desired_margin }}" min="1" max="89" step="0.1" required>
+                            <div class="form-helper">{{ t["form_hint.desired_margin"] }}</div>
                         </div>
                         <div class="col-12">
                             <label class="form-label" for="scenario">{{ t["form.scenario"] }}</label>
@@ -84,6 +97,7 @@
                                 <option value="HIGH" {% if default_values.scenario == "HIGH" %}selected{% endif %}>{{ t["scenario.HIGH"] }}</option>
                                 <option value="PROMO" {% if default_values.scenario == "PROMO" %}selected{% endif %}>{{ t["scenario.PROMO"] }}</option>
                             </select>
+                            <div class="form-helper">{{ t["form_hint.scenario"] }}</div>
                         </div>
                         <div class="col-12 d-grid gap-2">
                             <button type="submit" id="analyzeBtn" class="btn btn-dark btn-lg">{{ t["analyze.run_full_analysis"] }}</button>
@@ -164,6 +178,7 @@
                         <h3 class="section-title mb-0">{{ t["analyze.scenario_comparison"] }}</h3>
                         <span id="winningScenario" class="soft-badge">{{ t["analyze.not_generated"] }}</span>
                     </div>
+                    <p class="text-muted mb-3">{{ t["analyze.scenario_comparison_caption"] }}</p>
                     <div id="scenarioSummary" class="row g-3 mb-3"></div>
                     <div class="chart-wrap">
                         <canvas id="scenarioChart"></canvas>

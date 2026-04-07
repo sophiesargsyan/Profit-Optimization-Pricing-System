@@ -25,6 +25,9 @@
                         <li class="nav-item"><a class="nav-link {% if page_name == 'portfolio' %}active{% endif %}" href="{{ localized_url('portfolio_page') }}">{{ t["nav.portfolio"] }}</a></li>
                         <li class="nav-item"><a class="nav-link {% if page_name == 'dashboard' %}active{% endif %}" href="{{ localized_url('dashboard_page') }}">{{ t["nav.dashboard"] }}</a></li>
                         <li class="nav-item"><a class="nav-link {% if page_name == 'about' %}active{% endif %}" href="{{ localized_url('about_page') }}">{{ t["nav.about"] }}</a></li>
+                        <li class="nav-item d-none d-lg-block">
+                            <a class="btn btn-dark btn-sm nav-cta" href="{{ localized_url('analyze_page') }}">{{ t["nav.cta"] }}</a>
+                        </li>
                         <li class="nav-item dropdown">
                             <button class="btn btn-outline-secondary dropdown-toggle lang-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
                                 {{ supported_languages[current_lang] }}
@@ -47,6 +50,13 @@
         <main class="app-main">
             {% block content %}{% endblock %}
         </main>
+
+        <footer class="app-footer">
+            <div class="container d-flex flex-wrap justify-content-between align-items-center gap-2">
+                <div class="footer-copy">{{ t["footer.copy"] }}</div>
+                <a class="btn btn-outline-secondary btn-sm" href="{{ localized_url('analyze_page') }}">{{ t["nav.cta"] }}</a>
+            </div>
+        </footer>
     </div>
 
     <script>

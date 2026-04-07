@@ -3,10 +3,14 @@
 {% block title %}{{ t["brand.name"] }} | {{ t["title.portfolio"] }}{% endblock %}
 
 {% block content %}
+{% set best_profit_row = comparison_rows|sort(attribute='expected_profit', reverse=true)|first if comparison_rows else None %}
+{% set best_margin_row = comparison_rows|sort(attribute='margin', reverse=true)|first if comparison_rows else None %}
+{% set highest_risk_row = comparison_rows|sort(attribute='risk_score', reverse=true)|first if comparison_rows else None %}
+
 <section class="section-space">
     <div class="container">
         <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
-            <div class="page-heading mb-0">
+            <div class="page-heading page-heading-left mb-0">
                 <span class="eyebrow-pill">{{ t["portfolio.eyebrow"] }}</span>
                 <h1>{{ t["portfolio.title"] }}</h1>
                 <p>{{ t["portfolio.subtitle"] }}</p>
@@ -35,20 +39,6 @@
         <div class="row g-3 mb-4">
             <div class="col-md-6 col-xl-3">
                 <div class="metric-card summary-card summary-card-primary">
-                    <span class="metric-label">{{ t["portfolio.summary.total_products"] }}</span>
-                    <div class="metric-value">{{ portfolio_summary.total_products }}</div>
-                    <p class="metric-note">{{ t["portfolio.summary.total_products_note"] }}</p>
-                </div>
-            </div>
-            <div class="col-md-6 col-xl-3">
-                <div class="metric-card summary-card">
-                    <span class="metric-label">{{ t["portfolio.summary.projected_revenue"] }}</span>
-                    <div class="metric-value">${{ portfolio_summary.projected_revenue }}</div>
-                    <p class="metric-note">{{ t["portfolio.summary.projected_revenue_note"] }}</p>
-                </div>
-            </div>
-            <div class="col-md-6 col-xl-3">
-                <div class="metric-card summary-card">
                     <span class="metric-label">{{ t["portfolio.summary.projected_profit"] }}</span>
                     <div class="metric-value">${{ portfolio_summary.projected_profit }}</div>
                     <p class="metric-note">{{ t["portfolio.summary.projected_profit_note"] }}</p>
@@ -56,9 +46,41 @@
             </div>
             <div class="col-md-6 col-xl-3">
                 <div class="metric-card summary-card">
-                    <span class="metric-label">{{ t["portfolio.summary.low_risk_products"] }}</span>
-                    <div class="metric-value">{{ portfolio_summary.low_risk_products }}</div>
-                    <p class="metric-note">{{ t["portfolio.summary.low_risk_products_note"] }}</p>
+                    <span class="metric-label">{{ t["portfolio.summary.best_product"] }}</span>
+                    <div class="metric-value">{{ best_profit_row.product_name if best_profit_row else t["common.not_available"] }}</div>
+                    <p class="metric-note">
+                        {% if best_profit_row %}
+                        {{ t["table.expected_profit"] }}: ${{ best_profit_row.expected_profit }}
+                        {% else %}
+                        {{ t["portfolio.summary.best_product_note"] }}
+                        {% endif %}
+                    </p>
+                </div>
+            </div>
+            <div class="col-md-6 col-xl-3">
+                <div class="metric-card summary-card">
+                    <span class="metric-label">{{ t["portfolio.summary.highest_margin"] }}</span>
+                    <div class="metric-value">{{ (best_margin_row.margin ~ '%') if best_margin_row else t["common.not_available"] }}</div>
+                    <p class="metric-note">
+                        {% if best_margin_row %}
+                        {{ best_margin_row.product_name }}
+                        {% else %}
+                        {{ t["portfolio.summary.highest_margin_note"] }}
+                        {% endif %}
+                    </p>
+                </div>
+            </div>
+            <div class="col-md-6 col-xl-3">
+                <div class="metric-card summary-card">
+                    <span class="metric-label">{{ t["portfolio.summary.highest_risk"] }}</span>
+                    <div class="metric-value">{{ t["risk." ~ highest_risk_row.risk_level] if highest_risk_row else t["common.not_available"] }}</div>
+                    <p class="metric-note">
+                        {% if highest_risk_row %}
+                        {{ highest_risk_row.product_name }}
+                        {% else %}
+                        {{ t["portfolio.summary.highest_risk_note"] }}
+                        {% endif %}
+                    </p>
                 </div>
             </div>
         </div>
@@ -66,7 +88,7 @@
         <div class="row g-4 align-items-start">
             <div class="col-lg-4">
                 <div class="app-card sticky-panel">
-                    <div class="d-flex justify-content-between align-items-center mb-3">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
                         <h2 class="section-title mb-0">
                             {% if editing_product %}{{ t["portfolio.form.title_edit"] }}{% else %}{{ t["portfolio.form.title_add"] }}{% endif %}
                         </h2>
@@ -82,50 +104,62 @@
                         <div class="col-12">
                             <label class="form-label" for="name">{{ t["form.product_name"] }}</label>
                             <input class="form-control" type="text" id="name" name="name" value="{{ form_values.name or '' }}" required>
+                            <div class="form-helper">{{ t["form_hint.product_name"] }}</div>
                         </div>
                         <div class="col-12">
                             <label class="form-label" for="category">{{ t["form.category"] }}</label>
                             <input class="form-control" type="text" id="category" name="category" value="{{ form_values.category or '' }}" required>
+                            <div class="form-helper">{{ t["form_hint.category"] }}</div>
                         </div>
                         <div class="col-sm-6">
                             <label class="form-label" for="unit_cost">{{ t["form.unit_cost"] }}</label>
                             <input class="form-control" type="number" id="unit_cost" name="unit_cost" value="{{ form_values.unit_cost or '' }}" min="0" step="0.01" required>
+                            <div class="form-helper">{{ t["form_hint.unit_cost"] }}</div>
                         </div>
                         <div class="col-sm-6">
                             <label class="form-label" for="fixed_cost">{{ t["form.fixed_cost"] }}</label>
                             <input class="form-control" type="number" id="fixed_cost" name="fixed_cost" value="{{ form_values.fixed_cost or '' }}" min="0" step="0.01" required>
+                            <div class="form-helper">{{ t["form_hint.fixed_cost"] }}</div>
                         </div>
                         <div class="col-sm-6">
                             <label class="form-label" for="base_price">{{ t["form.base_price"] }}</label>
                             <input class="form-control" type="number" id="base_price" name="base_price" value="{{ form_values.base_price or '' }}" min="0.01" step="0.01" required>
+                            <div class="form-helper">{{ t["form_hint.base_price"] }}</div>
                         </div>
                         <div class="col-sm-6">
                             <label class="form-label" for="competitor_price">{{ t["form.competitor_price"] }}</label>
                             <input class="form-control" type="number" id="competitor_price" name="competitor_price" value="{{ form_values.competitor_price or '' }}" min="0.01" step="0.01" required>
+                            <div class="form-helper">{{ t["form_hint.competitor_price"] }}</div>
                         </div>
                         <div class="col-sm-6">
                             <label class="form-label" for="base_demand">{{ t["form.base_demand"] }}</label>
                             <input class="form-control" type="number" id="base_demand" name="base_demand" value="{{ form_values.base_demand or '' }}" min="1" step="1" required>
+                            <div class="form-helper">{{ t["form_hint.base_demand"] }}</div>
                         </div>
                         <div class="col-sm-6">
                             <label class="form-label" for="inventory">{{ t["form.inventory"] }}</label>
                             <input class="form-control" type="number" id="inventory" name="inventory" value="{{ form_values.inventory or '' }}" min="1" step="1" required>
+                            <div class="form-helper">{{ t["form_hint.inventory"] }}</div>
                         </div>
                         <div class="col-sm-6">
                             <label class="form-label" for="elasticity">{{ t["form.elasticity"] }}</label>
                             <input class="form-control" type="number" id="elasticity" name="elasticity" value="{{ form_values.elasticity or '' }}" step="0.01" required>
+                            <div class="form-helper">{{ t["form_hint.elasticity"] }}</div>
                         </div>
                         <div class="col-sm-6">
                             <label class="form-label" for="marketing_budget">{{ t["form.marketing_budget"] }}</label>
                             <input class="form-control" type="number" id="marketing_budget" name="marketing_budget" value="{{ form_values.marketing_budget or '' }}" min="0" step="0.01" required>
+                            <div class="form-helper">{{ t["form_hint.marketing_budget"] }}</div>
                         </div>
                         <div class="col-sm-6">
                             <label class="form-label" for="return_rate">{{ t["form.return_rate"] }}</label>
                             <input class="form-control" type="number" id="return_rate" name="return_rate" value="{{ form_values.return_rate or '' }}" min="0" max="0.49" step="0.01" required>
+                            <div class="form-helper">{{ t["form_hint.return_rate"] }}</div>
                         </div>
                         <div class="col-sm-6">
                             <label class="form-label" for="desired_margin">{{ t["form.desired_margin"] }}</label>
                             <input class="form-control" type="number" id="desired_margin" name="desired_margin" value="{{ form_values.desired_margin or '' }}" min="1" max="89" step="0.1" required>
+                            <div class="form-helper">{{ t["form_hint.desired_margin"] }}</div>
                         </div>
                         <div class="col-12">
                             <label class="form-label" for="scenario">{{ t["form.scenario"] }}</label>
@@ -135,6 +169,7 @@
                                 <option value="HIGH" {% if form_values.scenario == "HIGH" %}selected{% endif %}>{{ t["scenario.HIGH"] }}</option>
                                 <option value="PROMO" {% if form_values.scenario == "PROMO" %}selected{% endif %}>{{ t["scenario.PROMO"] }}</option>
                             </select>
+                            <div class="form-helper">{{ t["form_hint.scenario"] }}</div>
                         </div>
 
                         <div class="col-12 d-grid gap-2">

@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import uuid4
 
-from product_defaults import DEMO_PORTFOLIO_PRODUCTS
+from product_defaults import SEED_PORTFOLIO_PRODUCTS
 from storage_utils import read_json_list, write_json
 
 
@@ -11,7 +11,7 @@ def _timestamp():
     return datetime.now().isoformat(timespec="seconds")
 
 
-def _demo_records():
+def _seed_records():
     seeded_at = _timestamp()
     return [
         {
@@ -20,12 +20,12 @@ def _demo_records():
             "created_at": seeded_at,
             "updated_at": seeded_at,
         }
-        for product in DEMO_PORTFOLIO_PRODUCTS
+        for product in SEED_PORTFOLIO_PRODUCTS
     ]
 
 
 def load_portfolio(file_path):
-    return read_json_list(file_path, _demo_records)
+    return read_json_list(file_path, _seed_records)
 
 
 def save_portfolio(file_path, products):

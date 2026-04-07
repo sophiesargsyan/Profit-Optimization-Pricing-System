@@ -3,39 +3,175 @@
 {% block title %}{{ t["brand.name"] }} | {{ t["title.home"] }}{% endblock %}
 
 {% block content %}
-<section class="hero-section">
+<section class="hero-section home-landing">
     <div class="container">
-        <div class="hero-card text-center">
-            <span class="eyebrow-pill">{{ t["home.eyebrow"] }}</span>
-            <h1 class="hero-title">{{ t["home.title"] }}</h1>
-            <p class="hero-subtitle">{{ t["home.subtitle"] }}</p>
-            <div class="hero-actions">
-                <a href="{{ localized_url('analyze_page') }}" class="btn btn-dark btn-lg px-4">{{ t["home.start_analysis"] }}</a>
-                <a href="{{ localized_url('about_page') }}" class="btn btn-outline-secondary btn-lg px-4">{{ t["home.learn_more"] }}</a>
+        <div class="hero-surface">
+            <div class="hero-grid">
+                <div class="hero-copy">
+                    <span class="eyebrow-pill">{{ t["home.eyebrow"] }}</span>
+                    <h1 class="hero-title hero-title-left">{{ t["home.title"] }}</h1>
+                    <p class="hero-subtitle hero-subtitle-left">{{ t["home.subtitle"] }}</p>
+                    <div class="hero-actions hero-actions-left">
+                        <a href="{{ localized_url('analyze_page') }}" class="btn btn-dark btn-lg px-4">{{ t["home.start_analysis"] }}</a>
+                        <a href="{{ localized_url('about_page') }}" class="btn btn-outline-secondary btn-lg px-4">{{ t["home.learn_more"] }}</a>
+                    </div>
+
+                    <div class="hero-proof-grid">
+                        <div class="hero-proof-card">
+                            <span class="metric-label">{{ t["home.proof1.label"] }}</span>
+                            <p>{{ t["home.proof1.value"] }}</p>
+                        </div>
+                        <div class="hero-proof-card">
+                            <span class="metric-label">{{ t["home.proof2.label"] }}</span>
+                            <p>{{ t["home.proof2.value"] }}</p>
+                        </div>
+                        <div class="hero-proof-card">
+                            <span class="metric-label">{{ t["home.proof3.label"] }}</span>
+                            <p>{{ t["home.proof3.value"] }}</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="hero-insight-card">
+                    <span class="soft-badge">{{ t["home.panel.badge"] }}</span>
+                    <h2>{{ t["home.panel.title"] }}</h2>
+                    <p>{{ t["home.panel.subtitle"] }}</p>
+
+                    <div class="hero-panel-stack">
+                        <div class="hero-panel-item">
+                            <div class="feature-icon">01</div>
+                            <h3>{{ t["home.panel.item1.title"] }}</h3>
+                            <p>{{ t["home.panel.item1.description"] }}</p>
+                        </div>
+                        <div class="hero-panel-item">
+                            <div class="feature-icon">02</div>
+                            <h3>{{ t["home.panel.item2.title"] }}</h3>
+                            <p>{{ t["home.panel.item2.description"] }}</p>
+                        </div>
+                        <div class="hero-panel-item">
+                            <div class="feature-icon">03</div>
+                            <h3>{{ t["home.panel.item3.title"] }}</h3>
+                            <p>{{ t["home.panel.item3.description"] }}</p>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
 
-        <div class="row g-4 feature-row">
-            <div class="col-md-4">
-                <div class="feature-card h-100">
-                    <div class="feature-icon">01</div>
-                    <h3>{{ t["home.feature1.title"] }}</h3>
-                    <p>{{ t["home.feature1.description"] }}</p>
+        <div class="home-section">
+            <div class="section-intro">
+                <span class="soft-badge">{{ t["home.audience.badge"] }}</span>
+                <h2>{{ t["home.audience.title"] }}</h2>
+                <p>{{ t["home.audience.subtitle"] }}</p>
+            </div>
+
+            <div class="row g-4">
+                <div class="col-md-6 col-xl-4">
+                    <div class="feature-card audience-card h-100">
+                        <div class="feature-icon">01</div>
+                        <h3>{{ t["home.audience.card1.title"] }}</h3>
+                        <p>{{ t["home.audience.card1.description"] }}</p>
+                    </div>
+                </div>
+                <div class="col-md-6 col-xl-4">
+                    <div class="feature-card audience-card h-100">
+                        <div class="feature-icon">02</div>
+                        <h3>{{ t["home.audience.card2.title"] }}</h3>
+                        <p>{{ t["home.audience.card2.description"] }}</p>
+                    </div>
+                </div>
+                <div class="col-md-6 col-xl-4">
+                    <div class="feature-card audience-card h-100">
+                        <div class="feature-icon">03</div>
+                        <h3>{{ t["home.audience.card3.title"] }}</h3>
+                        <p>{{ t["home.audience.card3.description"] }}</p>
+                    </div>
                 </div>
             </div>
-            <div class="col-md-4">
-                <div class="feature-card h-100">
-                    <div class="feature-icon">02</div>
-                    <h3>{{ t["home.feature2.title"] }}</h3>
-                    <p>{{ t["home.feature2.description"] }}</p>
+        </div>
+
+        <div class="home-section">
+            <div class="section-intro">
+                <span class="soft-badge">{{ t["home.features.badge"] }}</span>
+                <h2>{{ t["home.features.title"] }}</h2>
+                <p>{{ t["home.features.subtitle"] }}</p>
+            </div>
+
+            <div class="row g-4 feature-row">
+                <div class="col-md-6 col-xl-3">
+                    <div class="feature-card h-100">
+                        <div class="feature-icon">01</div>
+                        <h3>{{ t["home.feature1.title"] }}</h3>
+                        <p>{{ t["home.feature1.description"] }}</p>
+                    </div>
+                </div>
+                <div class="col-md-6 col-xl-3">
+                    <div class="feature-card h-100">
+                        <div class="feature-icon">02</div>
+                        <h3>{{ t["home.feature2.title"] }}</h3>
+                        <p>{{ t["home.feature2.description"] }}</p>
+                    </div>
+                </div>
+                <div class="col-md-6 col-xl-3">
+                    <div class="feature-card h-100">
+                        <div class="feature-icon">03</div>
+                        <h3>{{ t["home.feature3.title"] }}</h3>
+                        <p>{{ t["home.feature3.description"] }}</p>
+                    </div>
+                </div>
+                <div class="col-md-6 col-xl-3">
+                    <div class="feature-card h-100">
+                        <div class="feature-icon">04</div>
+                        <h3>{{ t["home.feature4.title"] }}</h3>
+                        <p>{{ t["home.feature4.description"] }}</p>
+                    </div>
                 </div>
             </div>
-            <div class="col-md-4">
-                <div class="feature-card h-100">
-                    <div class="feature-icon">03</div>
-                    <h3>{{ t["home.feature3.title"] }}</h3>
-                    <p>{{ t["home.feature3.description"] }}</p>
+        </div>
+
+        <div class="home-section">
+            <div class="home-flow-card">
+                <div class="section-intro mb-0">
+                    <span class="soft-badge">{{ t["home.flow.badge"] }}</span>
+                    <h2>{{ t["home.flow.title"] }}</h2>
+                    <p>{{ t["home.flow.subtitle"] }}</p>
                 </div>
+
+                <div class="row g-4">
+                    <div class="col-md-4">
+                        <div class="flow-step">
+                            <span class="flow-step-number">01</span>
+                            <h3>{{ t["home.flow.step1.title"] }}</h3>
+                            <p>{{ t["home.flow.step1.description"] }}</p>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="flow-step">
+                            <span class="flow-step-number">02</span>
+                            <h3>{{ t["home.flow.step2.title"] }}</h3>
+                            <p>{{ t["home.flow.step2.description"] }}</p>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="flow-step">
+                            <span class="flow-step-number">03</span>
+                            <h3>{{ t["home.flow.step3.title"] }}</h3>
+                            <p>{{ t["home.flow.step3.description"] }}</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="home-cta-band">
+            <div>
+                <span class="soft-badge">{{ t["home.cta.badge"] }}</span>
+                <h2>{{ t["home.cta.title"] }}</h2>
+                <p>{{ t["home.cta.subtitle"] }}</p>
+            </div>
+            <div class="hero-actions hero-actions-left mt-0">
+                <a href="{{ localized_url('analyze_page') }}" class="btn btn-dark btn-lg px-4">{{ t["home.cta.primary"] }}</a>
+                <a href="{{ localized_url('dashboard_page') }}" class="btn btn-outline-secondary btn-lg px-4">{{ t["home.cta.secondary"] }}</a>
             </div>
         </div>
     </div>

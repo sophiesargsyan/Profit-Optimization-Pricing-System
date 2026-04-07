@@ -30,7 +30,7 @@ EMPTY_PRODUCT = {
     "scenario": "NORMAL",
 }
 
-DEMO_PORTFOLIO_PRODUCTS = [
+SEED_PORTFOLIO_PRODUCTS = [
     DEFAULT_PRODUCT,
     {
         "name": "Wireless Ergonomic Mouse",

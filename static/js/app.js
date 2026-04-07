@@ -360,7 +360,7 @@ function renderPriceProfitChart(curve) {
                     label: tr("js.chart_profit"),
                     data: curve.map((point) => point.profit),
                     borderColor: "#0f172a",
-                    backgroundColor: "rgba(15, 23, 42, 0.08)",
+                    backgroundColor: "rgba(15, 118, 110, 0.12)",
                     tension: 0.32,
                     fill: true,
                     pointRadius: 2,
@@ -447,7 +447,7 @@ function renderScenarioChart(data) {
                 {
                     label: tr("js.chart_profit"),
                     data: data.profits,
-                    backgroundColor: ["#d9e2ff", "#b9c9ff", "#94adff", "#6f91ff"],
+                    backgroundColor: ["#dcecf9", "#b9ddf0", "#7cc6d6", "#2c8b97"],
                     borderRadius: 10,
                 },
             ],

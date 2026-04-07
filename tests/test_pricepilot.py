@@ -81,7 +81,7 @@ class WorkspaceStorageTests(unittest.TestCase):
     def tearDown(self):
         self.temp_dir.cleanup()
 
-    def test_portfolio_load_seeds_demo_products_on_first_run(self):
+    def test_portfolio_load_seeds_initial_products_on_first_run(self):
         products = load_portfolio(self.portfolio_file)
 
         self.assertGreaterEqual(len(products), 3)
@@ -176,7 +176,7 @@ class FlaskAppTests(unittest.TestCase):
             with client.session_transaction() as session:
                 self.assertEqual(session["lang"], "hy")
 
-    def test_api_analyze_returns_localized_explanation(self):
+    def test_api_analyze_returns_explanation_for_language_routes(self):
         with self.client as client:
             client.get("/?lang=ru")
             response = client.post("/api/analyze", json=self.payload)
@@ -184,7 +184,7 @@ class FlaskAppTests(unittest.TestCase):
 
         self.assertTrue(data["success"])
         self.assertIsNone(data["error"])
-        self.assertIn("Рекомендация", data["data"]["explanation"]["title"])
+        self.assertIn("Рекомендуемый ценовой шаг", data["data"]["explanation"]["title"])
 
     def test_api_analyze_saves_history_entry(self):
         response = self.client.post("/api/analyze", json=self.payload)

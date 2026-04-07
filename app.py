@@ -36,7 +36,7 @@ from workspace_service import (
 
 app = Flask(__name__)
 app.config["JSON_SORT_KEYS"] = False
-# A deployment should supply FLASK_SECRET_KEY, but local demos still work without manual setup.
+# A deployment should supply FLASK_SECRET_KEY, but local runs still work without manual setup.
 app.config["SECRET_KEY"] = os.environ.get("FLASK_SECRET_KEY") or secrets.token_hex(32)
 app.config["MAX_CONTENT_LENGTH"] = 64 * 1024
 
@@ -306,6 +306,7 @@ def build_localized_explanation(result, lang):
         "summary": format_translation(
             translations,
             "explanation.summary",
+            strategy=strategy_name,
             price=best["price"],
             product=product["name"],
             profit=best["profit"],
@@ -396,7 +397,7 @@ def parse_product(data, scenario_override=None):
     )
 
 
-def build_demo_product():
+def build_reference_product():
     return parse_product(DEFAULT_PRODUCT)
 
 
@@ -544,14 +545,14 @@ def history_export_json():
 
 @app.route("/dashboard")
 def dashboard_page():
-    demo_product = build_demo_product()
-    demo_analysis = run_full_analysis(demo_product)
-    demo_scenarios = compare_all_scenarios(demo_product)
+    reference_product = build_reference_product()
+    reference_analysis = run_full_analysis(reference_product)
+    reference_scenarios = compare_all_scenarios(reference_product)
     return render_template(
         "dashboard.html",
         page_name="dashboard",
-        demo_analysis=demo_analysis,
-        demo_scenarios=demo_scenarios,
+        reference_analysis=reference_analysis,
+        reference_scenarios=reference_scenarios,
     )
 
 

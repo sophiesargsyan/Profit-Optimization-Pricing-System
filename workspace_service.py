@@ -49,6 +49,8 @@ def build_portfolio_comparison(records):
                 "expected_profit": best["profit"],
                 "margin": best["profit_margin"],
                 "risk_level": best["risk_level"],
+                "risk_score": best["risk_score"],
+                "decision_score": best["balanced_score"],
                 "recommended_strategy": best["strategy"],
             }
         )

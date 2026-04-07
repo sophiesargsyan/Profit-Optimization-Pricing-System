@@ -3,9 +3,13 @@
 {% block title %}{{ t["brand.name"] }} | {{ t["title.dashboard"] }}{% endblock %}
 
 {% block content %}
+{% set strongest_profit_scenario = reference_scenarios.scenarios|sort(attribute='profit', reverse=true)|first %}
+{% set highest_risk_scenario = reference_scenarios.scenarios|sort(attribute='risk_score', reverse=true)|first %}
+{% set best_overall_scenario = reference_scenarios.scenarios|sort(attribute='scenario_score', reverse=true)|first %}
+
 <section class="section-space">
     <div class="container">
-        <div class="page-heading mb-4">
+        <div class="page-heading page-heading-left mb-4">
             <span class="eyebrow-pill">{{ t["dashboard.eyebrow"] }}</span>
             <h1>{{ t["dashboard.title"] }}</h1>
             <p>{{ t["dashboard.subtitle"] }}</p>
@@ -43,57 +47,91 @@
         </div>
 
         <div class="app-card mb-4">
-            <div class="d-flex justify-content-between align-items-center mb-4">
+            <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
                 <div>
-                    <h2 class="section-title mb-1">{{ t["dashboard.sample_snapshot"] }}</h2>
-                    <p class="text-muted mb-0">{{ t["dashboard.sample_snapshot_subtitle"] }}</p>
+                    <h2 class="section-title mb-1">{{ t["dashboard.executive_brief"] }}</h2>
+                    <p class="text-muted mb-0">{{ t["dashboard.executive_brief_subtitle"] }}</p>
                 </div>
-                <span class="soft-badge">{{ demo_analysis.product.name }}</span>
+                <span class="soft-badge">{{ reference_analysis.product.name }}</span>
+            </div>
+
+            <div class="row g-3">
+                <div class="col-md-6 col-xl-4">
+                    <div class="metric-card summary-card summary-card-primary">
+                        <span class="metric-label">{{ t["dashboard.strongest_profit"] }}</span>
+                        <div class="metric-value">{{ t["scenario." ~ strongest_profit_scenario.scenario] }}</div>
+                        <p class="metric-note">{{ t["dashboard.profit"] }}: ${{ strongest_profit_scenario.profit }}</p>
+                    </div>
+                </div>
+                <div class="col-md-6 col-xl-4">
+                    <div class="metric-card summary-card">
+                        <span class="metric-label">{{ t["dashboard.best_overall_scenario"] }}</span>
+                        <div class="metric-value">{{ t["scenario." ~ best_overall_scenario.scenario] }}</div>
+                        <p class="metric-note">{{ t["strategy." ~ best_overall_scenario.best_strategy] }}</p>
+                    </div>
+                </div>
+                <div class="col-md-6 col-xl-4">
+                    <div class="metric-card summary-card">
+                        <span class="metric-label">{{ t["dashboard.highest_risk_scenario"] }}</span>
+                        <div class="metric-value">{{ t["scenario." ~ highest_risk_scenario.scenario] }}</div>
+                        <p class="metric-note">{{ t["dashboard.risk_score"] }}: {{ highest_risk_scenario.risk_score }}/100</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="app-card mb-4">
+            <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
+                <div>
+                    <h2 class="section-title mb-1">{{ t["dashboard.reference_snapshot"] }}</h2>
+                    <p class="text-muted mb-0">{{ t["dashboard.reference_snapshot_subtitle"] }}</p>
+                </div>
+                <span class="soft-badge">{{ reference_analysis.product.category }}</span>
             </div>
 
             <div class="row g-3">
                 <div class="col-md-6 col-xl-3">
                     <div class="metric-card">
                         <span class="metric-label">{{ t["dashboard.best_strategy"] }}</span>
-                        <h3>{{ t["strategy." ~ demo_analysis.best_strategy.strategy] }}</h3>
-                        <p class="text-muted mb-0">{{ t["dashboard.recommended_price"] }}: ${{ demo_analysis.best_strategy.price }}</p>
+                        <h3>{{ t["strategy." ~ reference_analysis.best_strategy.strategy] }}</h3>
+                        <p class="text-muted mb-0">{{ t["dashboard.recommended_price"] }}: ${{ reference_analysis.best_strategy.price }}</p>
                     </div>
                 </div>
                 <div class="col-md-6 col-xl-3">
                     <div class="metric-card">
                         <span class="metric-label">{{ t["dashboard.expected_profit"] }}</span>
-                        <h3>${{ demo_analysis.best_strategy.profit }}</h3>
-                        <p class="text-muted mb-0">{{ t["dashboard.profit_margin"] }}: {{ demo_analysis.best_strategy.profit_margin }}%</p>
+                        <h3>${{ reference_analysis.best_strategy.profit }}</h3>
+                        <p class="text-muted mb-0">{{ t["dashboard.profit_margin"] }}: {{ reference_analysis.best_strategy.profit_margin }}%</p>
                     </div>
                 </div>
                 <div class="col-md-6 col-xl-3">
                     <div class="metric-card">
                         <span class="metric-label">{{ t["dashboard.roi"] }}</span>
-                        <h3>{{ demo_analysis.best_strategy.ROI }}%</h3>
-                        <p class="text-muted mb-0">{{ t["dashboard.break_even"] }}: {{ demo_analysis.best_strategy.break_even_units or t["common.not_available"] }} {{ t["dashboard.units"] }}</p>
+                        <h3>{{ reference_analysis.best_strategy.ROI }}%</h3>
+                        <p class="text-muted mb-0">{{ t["dashboard.break_even"] }}: {{ reference_analysis.best_strategy.break_even_units or t["common.not_available"] }} {{ t["dashboard.units"] }}</p>
                     </div>
                 </div>
                 <div class="col-md-6 col-xl-3">
                     <div class="metric-card">
                         <span class="metric-label">{{ t["dashboard.risk_level"] }}</span>
-                        <h3>{{ t["risk." ~ demo_analysis.best_strategy.risk_level] }}</h3>
-                        <p class="text-muted mb-0">{{ t["dashboard.risk_score"] }}: {{ demo_analysis.best_strategy.risk_score }}/100</p>
+                        <h3>{{ t["risk." ~ reference_analysis.best_strategy.risk_level] }}</h3>
+                        <p class="text-muted mb-0">{{ t["dashboard.risk_score"] }}: {{ reference_analysis.best_strategy.risk_score }}/100</p>
                     </div>
                 </div>
             </div>
         </div>
 
         <div class="app-card">
-            <div class="d-flex justify-content-between align-items-center mb-4">
+            <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
                 <div>
                     <h2 class="section-title mb-1">{{ t["dashboard.scenario_overview"] }}</h2>
                     <p class="text-muted mb-0">{{ t["dashboard.scenario_overview_subtitle"] }}</p>
                 </div>
-                <span class="soft-badge">{{ t["dashboard.winning_scenario"] }}: {{ t["scenario." ~ demo_scenarios.winning_scenario] }}</span>
+                <span class="soft-badge">{{ t["dashboard.winning_scenario"] }}: {{ t["scenario." ~ reference_scenarios.winning_scenario] }}</span>
             </div>
 
             <div class="row g-3">
-                {% for scenario in demo_scenarios.scenarios %}
+                {% for scenario in reference_scenarios.scenarios %}
                 <div class="col-md-6 col-xl-3">
                     <div class="scenario-mini-card h-100">
                         <div class="d-flex justify-content-between align-items-start mb-3">
