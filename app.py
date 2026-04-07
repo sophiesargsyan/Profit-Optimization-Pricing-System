@@ -2,7 +2,6 @@ import json
 import os
 import secrets
 from dataclasses import asdict
-from functools import lru_cache
 from pathlib import Path
 
 from flask import (
@@ -84,7 +83,6 @@ NUMERIC_FIELDS = {
 PRODUCT_FORM_FIELDS = tuple(STRING_FIELDS.keys()) + tuple(NUMERIC_FIELDS.keys()) + ("scenario",)
 
 
-@lru_cache(maxsize=None)
 def _load_translation_file(lang):
     translation_file = TRANSLATIONS_DIR / f"{lang}.json"
     if not translation_file.exists():
