@@ -1,8 +1,11 @@
 from __future__ import annotations
 
-import math
 from dataclasses import asdict, dataclass, replace
-from statistics import mean, pstdev
+from datetime import timedelta
+from statistics import mean, median, pstdev
+
+from catalog_profiles import CATEGORY_PROFILES
+from data_repository import load_business_dataset
 
 
 @dataclass
@@ -10,69 +13,57 @@ class ProductData:
     name: str
     category: str
     unit_cost: float
-    fixed_cost: float
-    base_price: float
-    competitor_price: float
-    base_demand: float
-    inventory: int
-    elasticity: float
-    marketing_budget: float
-    return_rate: float
-    desired_margin: float
+    current_price: float
+    units_sold_30d: float
+    competitor_price: float | None
     scenario: str = "NORMAL"
+    elasticity_override: float | None = None
+    return_rate_override: float | None = None
+    fixed_cost_allocation_override: float | None = None
+    target_margin_override: float | None = None
+    marketing_factor_override: float | None = None
+    inventory_constraint_override: int | None = None
 
 
 SCENARIOS = {
     "LOW": {
-        "label": "Low Market Demand",
-        "demand_multiplier": 0.84,
-        "competitor_multiplier": 0.97,
-        "cost_multiplier": 1.03,
-        "marketing_multiplier": 0.92,
-        "return_rate_multiplier": 1.06,
+        "label": "Soft demand",
+        "demand_multiplier": 0.92,
+        "competitor_multiplier": 1.02,
     },
     "NORMAL": {
-        "label": "Normal Conditions",
+        "label": "Stable demand",
         "demand_multiplier": 1.0,
         "competitor_multiplier": 1.0,
-        "cost_multiplier": 1.0,
-        "marketing_multiplier": 1.0,
-        "return_rate_multiplier": 1.0,
     },
     "HIGH": {
-        "label": "High Demand Window",
-        "demand_multiplier": 1.18,
-        "competitor_multiplier": 1.04,
-        "cost_multiplier": 1.04,
-        "marketing_multiplier": 1.08,
-        "return_rate_multiplier": 0.96,
+        "label": "Strong demand",
+        "demand_multiplier": 1.08,
+        "competitor_multiplier": 0.98,
     },
     "PROMO": {
-        "label": "Promotional Campaign",
-        "demand_multiplier": 1.32,
-        "competitor_multiplier": 0.95,
-        "cost_multiplier": 1.0,
-        "marketing_multiplier": 1.22,
-        "return_rate_multiplier": 1.1,
+        "label": "Campaign push",
+        "demand_multiplier": 1.14,
+        "competitor_multiplier": 0.97,
     },
 }
 
-# Centralized weights keep the ranking explainable and easy to tune.
-SCORING_WEIGHTS = {
-    "profit": 0.32,
-    "margin": 0.22,
-    "roi": 0.18,
-    "risk": 0.18,
-    "stability": 0.10,
-}
+DISPLAY_STRATEGIES = (
+    "Current Price",
+    "Competitive Parity",
+    "Volume Push",
+    "Margin Guardrail",
+    "Premium Lift",
+    "Profit Optimal",
+)
 
 
 def _round(value, digits=2):
     return round(float(value), digits)
 
 
-def _clamp(value, minimum, maximum):
-    return max(minimum, min(value, maximum))
+def _clamp(value, lower, upper):
+    return max(lower, min(value, upper))
 
 
 def _safe_div(numerator, denominator, default=0.0):
@@ -82,7 +73,26 @@ def _safe_div(numerator, denominator, default=0.0):
 
 
 def _scenario_product(product, scenario_name):
-    return replace(product, scenario=scenario_name.upper())
+    return replace(product, scenario=scenario_name)
+
+
+def _confidence_from_score(score):
+    if score >= 0.78:
+        return "High"
+    if score >= 0.58:
+        return "Medium"
+    return "Low"
+
+
+def _estimate_payload(value, source, detail, score, sample_size=0):
+    return {
+        "value": _round(value, 4),
+        "source": source,
+        "detail": detail,
+        "sample_size": int(sample_size),
+        "confidence_score": _round(score * 100, 1),
+        "confidence_level": _confidence_from_score(score),
+    }
 
 
 def validate_product(product):
@@ -90,30 +100,30 @@ def validate_product(product):
 
     if not product.name.strip():
         errors.append("Product name is required.")
-    if not product.category.strip():
-        errors.append("Category is required.")
+    if product.category not in CATEGORY_PROFILES:
+        errors.append(f"Category must be one of: {', '.join(CATEGORY_PROFILES)}.")
     if product.unit_cost < 0:
         errors.append("Unit cost cannot be negative.")
-    if product.fixed_cost < 0:
-        errors.append("Fixed cost cannot be negative.")
-    if product.base_price <= 0:
-        errors.append("Base price must be greater than zero.")
-    if product.competitor_price <= 0:
-        errors.append("Competitor price must be greater than zero.")
-    if product.base_demand <= 0:
-        errors.append("Base demand must be greater than zero.")
-    if product.inventory <= 0:
-        errors.append("Inventory must be greater than zero.")
-    if product.elasticity >= -0.05 or product.elasticity < -5:
-        errors.append("Elasticity must be a negative value between -5 and -0.05.")
-    if product.marketing_budget < 0:
-        errors.append("Marketing budget cannot be negative.")
-    if product.return_rate < 0 or product.return_rate >= 0.5:
-        errors.append("Return rate must be between 0 and 0.49.")
-    if product.desired_margin <= 0 or product.desired_margin >= 90:
-        errors.append("Desired margin must be between 0 and 90 percent.")
+    if product.current_price <= 0:
+        errors.append("Current price must be greater than zero.")
+    if product.units_sold_30d <= 0:
+        errors.append("Units sold in the last 30 days must be greater than zero.")
+    if product.competitor_price is not None and product.competitor_price <= 0:
+        errors.append("Competitor price must be greater than zero when provided.")
+    if product.elasticity_override is not None and not (-4.5 <= product.elasticity_override <= -0.2):
+        errors.append("Elasticity override must be between -4.5 and -0.2.")
+    if product.return_rate_override is not None and not (0.0 <= product.return_rate_override <= 0.45):
+        errors.append("Return rate override must be between 0 and 0.45.")
+    if product.fixed_cost_allocation_override is not None and product.fixed_cost_allocation_override < 0:
+        errors.append("Fixed cost allocation override cannot be negative.")
+    if product.target_margin_override is not None and not (0.1 <= product.target_margin_override <= 0.8):
+        errors.append("Target margin override must be between 0.1 and 0.8.")
+    if product.marketing_factor_override is not None and not (0.7 <= product.marketing_factor_override <= 1.5):
+        errors.append("Marketing factor override must be between 0.7 and 1.5.")
+    if product.inventory_constraint_override is not None and product.inventory_constraint_override <= 0:
+        errors.append("Inventory constraint override must be greater than zero.")
     if product.scenario not in SCENARIOS:
-        errors.append(f"Scenario must be one of: {', '.join(SCENARIOS.keys())}.")
+        errors.append(f"Scenario must be one of: {', '.join(SCENARIOS)}.")
 
     if errors:
         raise ValueError(" ".join(errors))
@@ -121,160 +131,572 @@ def validate_product(product):
     return True
 
 
-def get_adjusted_values(product):
-    validate_product(product)
-    scenario = SCENARIOS[product.scenario]
-    adjusted_return_rate = min(
-        0.45,
-        max(0.0, product.return_rate * scenario["return_rate_multiplier"]),
-    )
+def extract_seasonality(sales_history):
+    if len(sales_history) < 45:
+        return None
 
-    adjusted_values = {
-        "scenario": product.scenario,
-        "scenario_label": scenario["label"],
-        "adjusted_unit_cost": _round(product.unit_cost * scenario["cost_multiplier"]),
-        "adjusted_competitor_price": _round(
-            product.competitor_price * scenario["competitor_multiplier"]
-        ),
-        "adjusted_base_demand": _round(
-            product.base_demand * scenario["demand_multiplier"]
-        ),
-        "adjusted_marketing_budget": _round(
-            product.marketing_budget * scenario["marketing_multiplier"]
-        ),
-        "adjusted_return_rate": _round(adjusted_return_rate, 4),
-        "demand_multiplier": scenario["demand_multiplier"],
-        "competitor_multiplier": scenario["competitor_multiplier"],
-        "cost_multiplier": scenario["cost_multiplier"],
-    }
-    adjusted_values["reference_price"] = _round(
-        product.base_price * 0.45 + adjusted_values["adjusted_competitor_price"] * 0.55
-    )
-    return adjusted_values
+    month_averages = {}
+    for row in sales_history:
+        month_averages.setdefault(row["sale_date"].month, []).append(row["units_sold"])
+
+    overall_average = mean(
+        value for values in month_averages.values() for value in values
+    ) if month_averages else 0.0
+    if overall_average <= 0:
+        return None
+
+    multipliers = {}
+    for month in range(1, 13):
+        values = month_averages.get(month)
+        if not values:
+            multipliers[month] = 1.0
+            continue
+        multipliers[month] = _round(_clamp(mean(values) / overall_average, 0.72, 1.35), 4)
+    return multipliers
 
 
-def marketing_effect(marketing_budget):
-    # Marketing contributes diminishing demand lift instead of linear growth.
-    normalized_budget = max(marketing_budget, 0.0)
-    lift = min(0.32, math.log1p(normalized_budget / 250.0) * 0.12)
-    return 1.0 + lift
+def _monthly_price_points(sales_history):
+    buckets = {}
+    for row in sales_history:
+        key = (row["sale_date"].year, row["sale_date"].month)
+        bucket = buckets.setdefault(key, {"units": 0, "revenue": 0.0, "days": 0, "price_total": 0.0})
+        bucket["units"] += row["units_sold"]
+        bucket["revenue"] += row["revenue"]
+        bucket["days"] += 1
+        bucket["price_total"] += row["sale_price"]
+
+    points = []
+    for key in sorted(buckets):
+        bucket = buckets[key]
+        avg_price = bucket["price_total"] / max(bucket["days"], 1)
+        points.append(
+            {
+                "period": key,
+                "avg_price": avg_price,
+                "units": bucket["units"],
+            }
+        )
+    return points
 
 
-def _demand_context(product, price, adjusted):
-    safe_price = max(price, 0.01)
-    reference_price = max(adjusted["reference_price"], 0.01)
-    competitor_price = max(adjusted["adjusted_competitor_price"], 0.01)
+def _elasticity_from_points(points):
+    elasticities = []
+    for current, previous in zip(points[1:], points[:-1]):
+        price_change = _safe_div(current["avg_price"] - previous["avg_price"], previous["avg_price"])
+        demand_change = _safe_div(current["units"] - previous["units"], previous["units"])
+        if abs(price_change) < 0.015 or previous["units"] <= 0:
+            continue
+        elasticity = demand_change / price_change
+        if -4.5 <= elasticity <= -0.2:
+            elasticities.append(elasticity)
+    return elasticities
 
-    price_factor = (safe_price / reference_price) ** product.elasticity
-    price_gap_vs_competitor = _safe_div(competitor_price - safe_price, competitor_price)
-    competitiveness = _clamp(1.0 + price_gap_vs_competitor * 0.22, 0.78, 1.16)
-    promotion_lift = marketing_effect(adjusted["adjusted_marketing_budget"])
 
-    expected_demand = (
-        adjusted["adjusted_base_demand"]
-        * price_factor
-        * competitiveness
-        * promotion_lift
-    )
+def estimate_product_elasticity(product_sales_history):
+    points = _monthly_price_points(product_sales_history)
+    elasticities = _elasticity_from_points(points)
+    if len(elasticities) >= 3:
+        return _round(_clamp(median(elasticities), -4.0, -0.3), 4)
+    return None
 
+
+def estimate_category_elasticity(category_sales_history):
+    points = _monthly_price_points(category_sales_history)
+    elasticities = _elasticity_from_points(points)
+    if len(elasticities) >= 4:
+        return _round(_clamp(median(elasticities), -3.2, -0.35), 4)
+    return None
+
+
+def _recent_rows(sales_history, latest_date, days):
+    threshold = latest_date - timedelta(days=days - 1)
+    return [row for row in sales_history if row["sale_date"] >= threshold]
+
+
+def _de_seasonalized_monthly_demand(sales_history, latest_date, seasonality, days):
+    rows = _recent_rows(sales_history, latest_date, days)
+    if not rows:
+        return None
+
+    normalized_units = 0.0
+    for row in rows:
+        month_factor = max(seasonality.get(row["sale_date"].month, 1.0), 0.6)
+        normalized_units += row["units_sold"] / month_factor
+    return normalized_units / days * 30.0
+
+
+def _category_average_monthly_demand(dataset, category, latest_date, seasonality):
+    products = dataset.category_products.get(category, [])
+    if not products:
+        return None
+
+    values = []
+    for item in products:
+        rows = dataset.sales_by_product.get(item["product_id"], [])
+        demand = _de_seasonalized_monthly_demand(rows, latest_date, seasonality, 90)
+        if demand:
+            values.append(demand)
+    return mean(values) if values else None
+
+
+def _estimate_seasonality(product_rows, category_rows, all_rows, forecast_month):
+    product_map = extract_seasonality(product_rows) if len(product_rows) >= 180 else None
+    if product_map:
+        return {
+            **_estimate_payload(
+                product_map[forecast_month],
+                "product_history",
+                "Seasonality derived from product sales history.",
+                0.86,
+                len(product_rows),
+            ),
+            "monthly_multipliers": product_map,
+        }
+
+    category_map = extract_seasonality(category_rows) if len(category_rows) >= 180 else None
+    if category_map:
+        return {
+            **_estimate_payload(
+                category_map[forecast_month],
+                "category_history",
+                "Seasonality derived from category sales history.",
+                0.68,
+                len(category_rows),
+            ),
+            "monthly_multipliers": category_map,
+        }
+
+    global_map = extract_seasonality(all_rows) or {month: 1.0 for month in range(1, 13)}
     return {
-        "expected_demand": _round(max(expected_demand, 0.0)),
-        "price_factor": price_factor,
-        "competitiveness": competitiveness,
-        "promotion_lift": promotion_lift,
-        "price_gap_vs_competitor": _round(price_gap_vs_competitor * 100, 2),
-        "elasticity_effect": _round((price_factor - 1.0) * 100, 2),
+        **_estimate_payload(
+            global_map[forecast_month],
+            "global_history",
+            "Seasonality derived from the full catalog history.",
+            0.52,
+            len(all_rows),
+        ),
+        "monthly_multipliers": global_map,
     }
 
 
-def demand_model(product, price):
-    adjusted = get_adjusted_values(product)
-    return _demand_context(product, price, adjusted)["expected_demand"]
+def _estimate_baseline_demand(product, dataset, product_match, seasonality):
+    latest_date = dataset.latest_sale_date
+    latest_month_factor = max(seasonality["monthly_multipliers"].get(latest_date.month, 1.0), 0.6)
+    user_baseline = product.units_sold_30d / latest_month_factor
 
+    if product_match.product:
+        product_rows = dataset.sales_by_product.get(product_match.product["product_id"], [])
+        recent_30 = _de_seasonalized_monthly_demand(product_rows, latest_date, seasonality["monthly_multipliers"], 30)
+        recent_60 = _de_seasonalized_monthly_demand(product_rows, latest_date, seasonality["monthly_multipliers"], 60)
+        recent_90 = _de_seasonalized_monthly_demand(product_rows, latest_date, seasonality["monthly_multipliers"], 90)
+        values = [value for value in (recent_30, recent_60, recent_90) if value]
+        if values:
+            history_baseline = 0.5 * (recent_30 or values[0]) + 0.3 * (recent_60 or values[-1]) + 0.2 * (recent_90 or values[-1])
+            blended = history_baseline * 0.65 + user_baseline * 0.35
+            return _estimate_payload(
+                blended,
+                "product_history",
+                "Baseline demand blended from product history and the latest 30-day input.",
+                0.84 if len(product_rows) >= 180 else 0.72,
+                len(product_rows),
+            )
 
-def effective_sold_quantity(product, demand):
-    adjusted = get_adjusted_values(product)
-    gross_units = min(max(demand, 0.0), float(product.inventory))
-    net_units = gross_units * (1.0 - adjusted["adjusted_return_rate"])
-    return _round(max(net_units, 0.0))
-
-
-def _risk_evaluation(
-    product,
-    price,
-    unit_cost,
-    adjusted_competitor_price,
-    contribution_margin,
-    profit_margin,
-    break_even_units,
-    sold_quantity,
-    adjusted_return_rate,
-    profit,
-):
-    risk_score = 0
-    risk_factors = []
-
-    desired_margin_gap = max(product.desired_margin - profit_margin, 0.0)
-    sales_ratio = _safe_div(sold_quantity, product.inventory)
-    aggressive_discount = max(
-        0.0,
-        _safe_div(adjusted_competitor_price - price, adjusted_competitor_price),
+    category_baseline = _category_average_monthly_demand(
+        dataset,
+        product.category,
+        latest_date,
+        seasonality["monthly_multipliers"],
     )
-    markup_ratio = _safe_div(price - unit_cost, unit_cost)
-
-    if contribution_margin < 18:
-        risk_score += 22
-        risk_factors.append("Contribution margin is thin, leaving little buffer per unit sold.")
-    elif contribution_margin < 28:
-        risk_score += 12
-        risk_factors.append("Contribution margin is moderate and should be monitored closely.")
-
-    if desired_margin_gap > 0:
-        risk_score += min(22, 7 + desired_margin_gap * 0.7)
-        risk_factors.append(
-            "Projected profit margin stays below the target margin set for the product."
+    if category_baseline:
+        blended = user_baseline * 0.75 + category_baseline * 0.25
+        return _estimate_payload(
+            blended,
+            "category_history",
+            "Baseline demand anchored to the latest 30-day input and category history.",
+            0.62,
+            len(dataset.sales_by_category.get(product.category, [])),
         )
 
-    if break_even_units is None:
-        risk_score += 26
-        risk_factors.append("The current price does not cover the variable cost base.")
-    elif break_even_units > product.inventory:
-        risk_score += 22
-        risk_factors.append("Break-even units exceed available inventory.")
-    elif break_even_units > product.inventory * 0.85:
-        risk_score += 12
-        risk_factors.append("Break-even volume is close to the inventory ceiling.")
+    return _estimate_payload(
+        user_baseline,
+        "user_input",
+        "Baseline demand inferred directly from the latest 30-day demand input.",
+        0.44,
+        0,
+    )
 
-    if sales_ratio < 0.35:
+
+def _estimate_elasticity(product, dataset, product_match):
+    category_default = CATEGORY_PROFILES[product.category]["elasticity_default"]
+    if product.elasticity_override is not None:
+        return _estimate_payload(
+            product.elasticity_override,
+            "manual_override",
+            "Elasticity set by manual override.",
+            0.95,
+            0,
+        )
+
+    if product_match.product:
+        product_rows = dataset.sales_by_product.get(product_match.product["product_id"], [])
+        product_value = estimate_product_elasticity(product_rows)
+        if product_value is not None:
+            score = 0.82 if len(product_rows) >= 180 else 0.7
+            return _estimate_payload(
+                product_value,
+                "product_history",
+                "Elasticity estimated from product price and demand shifts.",
+                score,
+                len(product_rows),
+            )
+
+    category_value = estimate_category_elasticity(dataset.sales_by_category.get(product.category, []))
+    if category_value is not None:
+        return _estimate_payload(
+            category_value,
+            "category_history",
+            "Elasticity estimated from category price and demand shifts.",
+            0.61,
+            len(dataset.sales_by_category.get(product.category, [])),
+        )
+
+    return _estimate_payload(
+        category_default,
+        "category_default",
+        "Elasticity fell back to the category default benchmark.",
+        0.4,
+        0,
+    )
+
+
+def _estimate_return_rate(product, dataset, product_match):
+    category_default = CATEGORY_PROFILES[product.category]["return_rate_default"]
+    if product.return_rate_override is not None:
+        return _estimate_payload(
+            product.return_rate_override,
+            "manual_override",
+            "Return rate set by manual override.",
+            0.95,
+            0,
+        )
+
+    if product_match.product:
+        product_rows = dataset.sales_by_product.get(product_match.product["product_id"], [])
+        product_units = sum(row["units_sold"] for row in product_rows)
+        if product_units >= 240:
+            rate = sum(row["returns"] for row in product_rows) / max(product_units, 1)
+            return _estimate_payload(
+                rate,
+                "product_history",
+                "Return rate estimated from product return history.",
+                0.84,
+                product_units,
+            )
+
+    category_rows = dataset.sales_by_category.get(product.category, [])
+    category_units = sum(row["units_sold"] for row in category_rows)
+    if category_units >= 600:
+        rate = sum(row["returns"] for row in category_rows) / max(category_units, 1)
+        return _estimate_payload(
+            rate,
+            "category_history",
+            "Return rate estimated from category return history.",
+            0.64,
+            category_units,
+        )
+
+    return _estimate_payload(
+        category_default,
+        "category_default",
+        "Return rate fell back to the category benchmark.",
+        0.42,
+        0,
+    )
+
+
+def _estimate_marketing_factor(product, dataset, product_match):
+    category_default = CATEGORY_PROFILES[product.category]["marketing_factor_default"]
+    if product.marketing_factor_override is not None:
+        return _estimate_payload(
+            product.marketing_factor_override,
+            "manual_override",
+            "Marketing factor set by manual override.",
+            0.95,
+            0,
+        )
+
+    if product.scenario != "PROMO":
+        return _estimate_payload(
+            1.0,
+            "scenario_neutral",
+            "Marketing factor stays neutral outside promotional scenarios.",
+            0.9,
+            0,
+        )
+
+    rows = []
+    if product_match.product:
+        rows = dataset.sales_by_product.get(product_match.product["product_id"], [])
+    if not rows:
+        rows = dataset.sales_by_category.get(product.category, [])
+
+    campaign_rows = [row["units_sold"] for row in rows if row["campaign_flag"]]
+    regular_rows = [row["units_sold"] for row in rows if not row["campaign_flag"]]
+    if campaign_rows and regular_rows:
+        lift = _clamp(mean(campaign_rows) / max(mean(regular_rows), 1.0), 1.0, 1.3)
+        score = 0.76 if product_match.product else 0.58
+        detail = (
+            "Marketing factor estimated from product campaign history."
+            if product_match.product
+            else "Marketing factor estimated from category campaign history."
+        )
+        return _estimate_payload(lift, "campaign_history", detail, score, len(rows))
+
+    return _estimate_payload(
+        category_default,
+        "category_default",
+        "Marketing factor fell back to the category benchmark.",
+        0.46,
+        0,
+    )
+
+
+def _estimate_competitor_reference(product, dataset, product_match):
+    if product.competitor_price is not None:
+        return _estimate_payload(
+            product.competitor_price,
+            "user_input",
+            "Competitor reference price provided in the current analysis.",
+            0.92,
+            1,
+        )
+
+    if product_match.product:
+        latest_price = dataset.latest_competitor_price(product_match.product["product_id"])
+        if latest_price:
+            return _estimate_payload(
+                latest_price,
+                "product_snapshot",
+                "Competitor reference price taken from the latest product snapshot.",
+                0.74,
+                len(dataset.competitor_by_product.get(product_match.product["product_id"], [])),
+            )
+
+    category_price = dataset.category_competitor_price(product.category)
+    if category_price:
+        return _estimate_payload(
+            category_price,
+            "category_snapshot",
+            "Competitor reference price estimated from category snapshots.",
+            0.56,
+            len(dataset.category_products.get(product.category, [])),
+        )
+
+    return _estimate_payload(
+        product.current_price,
+        "current_price_fallback",
+        "Competitor reference fell back to the current price.",
+        0.32,
+        0,
+    )
+
+
+def _estimate_fixed_cost_allocation(product, dataset, product_match):
+    if product.fixed_cost_allocation_override is not None:
+        return _estimate_payload(
+            product.fixed_cost_allocation_override,
+            "manual_override",
+            "Fixed cost allocation set by manual override.",
+            0.95,
+            0,
+        )
+
+    recent_total_units = sum(row["units_sold"] for row in _recent_rows(dataset.sales_history, dataset.latest_sale_date, 90))
+    if recent_total_units <= 0:
+        value = dataset.business_settings.monthly_fixed_cost * 0.04
+        return _estimate_payload(
+            value,
+            "business_default",
+            "Fixed cost allocation fell back to a standard business share.",
+            0.34,
+            0,
+        )
+
+    if product_match.product:
+        product_rows = dataset.sales_by_product.get(product_match.product["product_id"], [])
+        recent_product_units = sum(row["units_sold"] for row in _recent_rows(product_rows, dataset.latest_sale_date, 90))
+        recent_input_ratio = _clamp(product.units_sold_30d / max(recent_product_units / 3 if recent_product_units else product.units_sold_30d, 1), 0.65, 1.45)
+        share = _clamp((recent_product_units / recent_total_units) * recent_input_ratio, 0.015, 0.18)
+        value = dataset.business_settings.monthly_fixed_cost * share
+        return _estimate_payload(
+            value,
+            "product_share",
+            "Fixed cost allocation estimated from recent product demand share.",
+            0.73,
+            recent_product_units,
+        )
+
+    category_rows = dataset.sales_by_category.get(product.category, [])
+    recent_category_units = sum(row["units_sold"] for row in _recent_rows(category_rows, dataset.latest_sale_date, 90))
+    product_count = max(len(dataset.category_products.get(product.category, [])), 1)
+    share = _clamp((recent_category_units / recent_total_units) / product_count, 0.015, 0.14)
+    value = dataset.business_settings.monthly_fixed_cost * share
+    return _estimate_payload(
+        value,
+        "category_share",
+        "Fixed cost allocation estimated from average category demand share.",
+        0.54,
+        recent_category_units,
+    )
+
+
+def _estimate_target_margin(product, dataset):
+    if product.target_margin_override is not None:
+        return _estimate_payload(
+            product.target_margin_override,
+            "manual_override",
+            "Target margin set by manual override.",
+            0.95,
+            0,
+        )
+
+    rows = dataset.sales_by_category.get(product.category, [])
+    if rows:
+        margins = []
+        for row in rows:
+            revenue = row["revenue"]
+            if revenue <= 0:
+                continue
+            realized_cost = product.unit_cost * row["units_sold"]
+            margin = (revenue - realized_cost) / revenue
+            margins.append(margin)
+        if margins:
+            category_margin = _clamp(mean(margins), 0.18, 0.42)
+            target = max(category_margin * 0.92, dataset.business_settings.default_margin_target)
+            return _estimate_payload(
+                target,
+                "category_history",
+                "Target margin estimated from category sales margins and business settings.",
+                0.61,
+                len(rows),
+            )
+
+    return _estimate_payload(
+        dataset.business_settings.default_margin_target,
+        "business_default",
+        "Target margin fell back to the business default.",
+        0.46,
+        0,
+    )
+
+
+def _build_assumptions(product, dataset):
+    product_match = dataset.match_product(product.name, product.category)
+    product_rows = dataset.sales_by_product.get(product_match.product["product_id"], []) if product_match.product else []
+    category_rows = dataset.sales_by_category.get(product.category, [])
+    seasonality = _estimate_seasonality(
+        product_rows,
+        category_rows,
+        dataset.sales_history,
+        dataset.forecast_month,
+    )
+
+    assumptions = {
+        "seasonality": seasonality,
+        "baseline_demand": _estimate_baseline_demand(product, dataset, product_match, seasonality),
+        "elasticity": _estimate_elasticity(product, dataset, product_match),
+        "return_rate": _estimate_return_rate(product, dataset, product_match),
+        "marketing_factor": _estimate_marketing_factor(product, dataset, product_match),
+        "competitor_reference": _estimate_competitor_reference(product, dataset, product_match),
+        "fixed_cost_allocation": _estimate_fixed_cost_allocation(product, dataset, product_match),
+        "target_margin": _estimate_target_margin(product, dataset),
+    }
+
+    confidence_components = [
+        assumptions["baseline_demand"]["confidence_score"] / 100,
+        assumptions["seasonality"]["confidence_score"] / 100,
+        assumptions["elasticity"]["confidence_score"] / 100,
+        assumptions["return_rate"]["confidence_score"] / 100,
+    ]
+    overall_score = mean(confidence_components)
+    overall_confidence = {
+        "score": _round(overall_score * 100, 1),
+        "level": _confidence_from_score(overall_score),
+    }
+
+    context = {
+        "match_level": product_match.level,
+        "matched_product": product_match.product["name"] if product_match.product else None,
+        "reference_price": (
+            product_match.product["reference_price"] if product_match.product else dataset.category_reference_price(product.category) or product.current_price
+        ),
+        "packaging_cost": (
+            product_match.product["packaging_cost"] if product_match.product else mean(
+                item["packaging_cost"] for item in dataset.category_products.get(product.category, [])
+            )
+        ),
+    }
+    return assumptions, overall_confidence, context
+
+
+def _evaluate_price(product, dataset, assumptions, context, price, strategy_name):
+    scenario = SCENARIOS[product.scenario]
+    baseline_demand = assumptions["baseline_demand"]["value"]
+    elasticity = assumptions["elasticity"]["value"]
+    seasonality_factor = assumptions["seasonality"]["value"]
+    competitor_reference = assumptions["competitor_reference"]["value"]
+    competitor_sensitivity = CATEGORY_PROFILES[product.category]["competitor_sensitivity"]
+    return_rate = assumptions["return_rate"]["value"]
+    marketing_factor = assumptions["marketing_factor"]["value"] if product.scenario == "PROMO" else 1.0
+    target_margin = assumptions["target_margin"]["value"]
+    fixed_cost = assumptions["fixed_cost_allocation"]["value"]
+    packaging_cost = context["packaging_cost"]
+
+    price_effect = (max(price, 0.01) / max(product.current_price, 0.01)) ** elasticity
+    competitor_gap = _safe_div((competitor_reference * scenario["competitor_multiplier"]) - price, competitor_reference, 0.0)
+    competitor_factor = _clamp(1.0 + competitor_gap * competitor_sensitivity, 0.84, 1.16)
+    scenario_factor = scenario["demand_multiplier"]
+
+    demand = baseline_demand * price_effect * seasonality_factor * competitor_factor * scenario_factor * marketing_factor
+    if product.inventory_constraint_override is not None:
+        demand = min(demand, product.inventory_constraint_override)
+
+    demand = max(demand, 0.0)
+    revenue = price * demand
+    variable_cost = (product.unit_cost + packaging_cost + dataset.business_settings.shipping_cost_avg) * demand
+    returns_cost = (product.unit_cost + packaging_cost) * demand * return_rate
+    payment_fees = revenue * dataset.business_settings.payment_fee_rate
+    total_cost = variable_cost + returns_cost + fixed_cost + payment_fees
+    profit = revenue - total_cost
+    profit_margin = _safe_div(profit, revenue, 0.0) * 100 if revenue > 0 else -100.0
+    roi = _safe_div(profit, total_cost, 0.0) * 100 if total_cost > 0 else 0.0
+
+    per_unit_contribution = price - (
+        product.unit_cost
+        + packaging_cost
+        + dataset.business_settings.shipping_cost_avg
+        + (product.unit_cost + packaging_cost) * return_rate
+        + price * dataset.business_settings.payment_fee_rate
+    )
+    break_even_units = None
+    if per_unit_contribution > 0:
+        break_even_units = fixed_cost / per_unit_contribution
+
+    risk_score = 12
+    if profit_margin < target_margin * 100:
         risk_score += 18
-        risk_factors.append("Expected sold quantity is weak relative to available inventory.")
-    elif sales_ratio < 0.55:
+    if assumptions["elasticity"]["confidence_level"] == "Low":
         risk_score += 10
-        risk_factors.append("Expected sold quantity is moderate rather than strong.")
-
-    if adjusted_return_rate > 0.12:
-        risk_score += 14
-        risk_factors.append("Return rate is high and may erode realized sales.")
-    elif adjusted_return_rate > 0.08:
-        risk_score += 7
-        risk_factors.append("Return rate is elevated compared with a stable retail benchmark.")
-
-    if aggressive_discount > 0.12:
+    if assumptions["baseline_demand"]["confidence_level"] == "Low":
+        risk_score += 8
+    if competitor_gap < -0.08:
         risk_score += 12
-        risk_factors.append("The strategy depends on an aggressive discount versus competitors.")
-    elif aggressive_discount > 0.06:
-        risk_score += 6
-        risk_factors.append("The price relies on noticeable discounting to stimulate demand.")
-
-    if markup_ratio < 0.18:
-        risk_score += 10
-        risk_factors.append("Markup above unit cost is narrow for a consumer product setting.")
-
+    if product.inventory_constraint_override is not None and demand >= product.inventory_constraint_override * 0.95:
+        risk_score += 8
     if profit <= 0:
-        risk_score += 24
-        risk_factors.append("Expected profit is non-positive under the current assumptions.")
+        risk_score += 22
 
-    risk_score = int(_clamp(round(risk_score), 0, 100))
+    risk_score = int(_clamp(risk_score, 0, 100))
     if risk_score < 35:
         risk_level = "Low"
     elif risk_score < 65:
@@ -282,544 +704,235 @@ def _risk_evaluation(
     else:
         risk_level = "High"
 
-    return risk_score, risk_level, risk_factors[:4]
-
-
-def calculate_financials(product, price, strategy_name):
-    validate_product(product)
-    adjusted = get_adjusted_values(product)
-    demand_context = _demand_context(product, price, adjusted)
-
-    demand = demand_context["expected_demand"]
-    gross_units = min(float(product.inventory), demand)
-    sold_quantity = effective_sold_quantity(product, demand)
-    returned_units = _round(max(gross_units - sold_quantity, 0.0))
-
-    unit_cost = adjusted["adjusted_unit_cost"]
-    revenue = sold_quantity * price
-    total_cost = (
-        product.fixed_cost
-        + adjusted["adjusted_marketing_budget"]
-        + gross_units * unit_cost
-    )
-    profit = revenue - total_cost
-
-    unit_contribution = price - unit_cost
-    contribution_margin = _safe_div(unit_contribution, price) * 100 if price > 0 else 0.0
-    profit_margin = _safe_div(profit, revenue, -1.0) * 100 if revenue > 0 else -100.0
-
-    break_even_units = None
-    if unit_contribution > 0:
-        break_even_units = (
-            (product.fixed_cost + adjusted["adjusted_marketing_budget"]) / unit_contribution
-        )
-
-    roi = _safe_div(profit, total_cost) * 100 if total_cost > 0 else 0.0
-    revenue_per_unit = _safe_div(revenue, sold_quantity)
-    inventory_utilization = _safe_div(gross_units, product.inventory) * 100
-
-    risk_score, risk_level, risk_factors = _risk_evaluation(
-        product=product,
-        price=price,
-        unit_cost=unit_cost,
-        adjusted_competitor_price=adjusted["adjusted_competitor_price"],
-        contribution_margin=contribution_margin,
-        profit_margin=profit_margin,
-        break_even_units=break_even_units,
-        sold_quantity=sold_quantity,
-        adjusted_return_rate=adjusted["adjusted_return_rate"],
-        profit=profit,
-    )
-
     return {
         "strategy": strategy_name,
         "scenario": product.scenario,
-        "scenario_label": adjusted["scenario_label"],
+        "scenario_label": scenario["label"],
         "price": _round(price),
         "demand": _round(demand),
-        "gross_units": _round(gross_units),
-        "sold_quantity": _round(sold_quantity),
-        "returned_units": returned_units,
-        "inventory_utilization": _round(inventory_utilization),
         "revenue": _round(revenue),
-        "total_cost": _round(total_cost),
         "profit": _round(profit),
         "profit_margin": _round(profit_margin),
-        "contribution_margin": _round(contribution_margin),
-        "break_even_units": None if break_even_units is None else _round(break_even_units),
         "ROI": _round(roi),
-        "revenue_per_unit": _round(revenue_per_unit),
-        "price_gap_vs_competitor": demand_context["price_gap_vs_competitor"],
-        "elasticity_effect": demand_context["elasticity_effect"],
+        "break_even_units": None if break_even_units is None else _round(break_even_units),
+        "price_gap_vs_competitor": _round(competitor_gap * 100, 2),
+        "price_effect": _round(price_effect, 4),
+        "seasonality_factor": _round(seasonality_factor, 4),
+        "competitor_factor": _round(competitor_factor, 4),
+        "scenario_factor": _round(scenario_factor, 4),
+        "marketing_factor": _round(marketing_factor, 4),
+        "return_rate": _round(return_rate * 100, 2),
+        "allocated_fixed_cost": _round(fixed_cost),
+        "payment_fees": _round(payment_fees),
+        "returns_cost": _round(returns_cost),
+        "variable_cost": _round(variable_cost),
+        "target_margin": _round(target_margin * 100, 2),
         "risk_score": risk_score,
         "risk_level": risk_level,
-        "risk_factors": risk_factors,
     }
 
 
-def _price_bounds(product):
-    adjusted = get_adjusted_values(product)
-    lower_bound = max(
-        adjusted["adjusted_unit_cost"] * 1.02,
-        product.base_price * 0.6,
-        1.0,
-    )
-    upper_bound = max(
-        product.base_price * 1.7,
-        adjusted["adjusted_competitor_price"] * 1.6,
-        adjusted["adjusted_unit_cost"] * 2.5,
-    )
-    return _round(lower_bound), _round(upper_bound)
+def _price_bounds(product, dataset, assumptions):
+    competitor_reference = assumptions["competitor_reference"]["value"]
+    floor = max(product.unit_cost * 1.35, product.current_price * 0.82, 8.0)
+    if competitor_reference:
+        floor = max(floor, competitor_reference * 0.78)
+
+    ceiling = max(product.current_price * 1.3, product.unit_cost * 4.0)
+    if competitor_reference:
+        ceiling = max(ceiling, competitor_reference * 1.24)
+
+    return _round(floor), _round(ceiling)
 
 
-def _bounded_price(product, candidate_price):
-    lower_bound, upper_bound = _price_bounds(product)
-    bounded = min(max(candidate_price, lower_bound), upper_bound)
-    return _round(bounded)
-
-
-def _strategy_base_prices(product):
-    adjusted = get_adjusted_values(product)
-    desired_margin_ratio = product.desired_margin / 100.0
-    elasticity_abs = abs(product.elasticity)
-    inventory_ratio = product.inventory / max(adjusted["adjusted_base_demand"], 1.0)
-
-    cost_plus = (
-        adjusted["adjusted_unit_cost"] + (product.fixed_cost / max(product.inventory, 1)) * 0.2
-    ) * (1.0 + desired_margin_ratio)
-
-    competitive = (
-        product.base_price * 0.4 + adjusted["adjusted_competitor_price"] * 0.6
-    ) * (0.98 if inventory_ratio > 1.05 else 1.02 if inventory_ratio < 0.75 else 1.0)
-
-    demand_bias = (
-        1.0
-        + max(0.0, 1.1 - elasticity_abs) * 0.12
-        - max(0.0, elasticity_abs - 1.1) * 0.07
-    )
-    demand_based = adjusted["reference_price"] * demand_bias
-
-    if inventory_ratio > 1.2:
-        inventory_shift = -0.09
-    elif inventory_ratio > 1.0:
-        inventory_shift = -0.04
-    elif inventory_ratio < 0.7:
-        inventory_shift = 0.08
-    else:
-        inventory_shift = 0.02
-    inventory_based = product.base_price * (1.0 + inventory_shift)
-
-    target_margin = adjusted["adjusted_unit_cost"] / max(1.0 - desired_margin_ratio, 0.1)
-
-    return {
-        "Cost-Plus": _bounded_price(product, cost_plus),
-        "Competitive": _bounded_price(product, competitive),
-        "Demand-Based": _bounded_price(product, demand_based),
-        "Inventory-Based": _bounded_price(product, inventory_based),
-        "Target-Margin": _bounded_price(product, target_margin),
-    }
-
-
-def _scenario_stability(product, price, strategy_name):
-    # Stability is measured by reusing the same price in every scenario.
-    scenario_results = []
-    for scenario_name in SCENARIOS:
-        scenario_product = _scenario_product(product, scenario_name)
-        scenario_results.append(
-            calculate_financials(scenario_product, price, strategy_name)
-        )
-
-    profits = [result["profit"] for result in scenario_results]
-    risk_scores = [result["risk_score"] for result in scenario_results]
-    mean_profit = mean(profits)
-    profit_std_dev = pstdev(profits) if len(profits) > 1 else 0.0
-    volatility_ratio = abs(profit_std_dev) / (abs(mean_profit) + 1.0)
-    negative_profit_count = sum(1 for item in profits if item <= 0)
-    average_risk = mean(risk_scores)
-
-    stability_score = 100.0
-    stability_score -= min(38.0, volatility_ratio * 55.0)
-    stability_score -= average_risk * 0.22
-    stability_score -= negative_profit_count * 12.0
-    stability_score = _clamp(stability_score, 0.0, 100.0)
-
-    best_scenario = max(
-        scenario_results,
-        key=lambda item: (item["profit"], -item["risk_score"]),
-    )
-    worst_scenario = min(
-        scenario_results,
-        key=lambda item: (item["profit"], -item["risk_score"]),
-    )
-
-    return {
-        "stability_score": _round(stability_score),
-        "mean_profit": _round(mean_profit),
-        "profit_std_dev": _round(profit_std_dev),
-        "average_risk_score": _round(average_risk),
-        "best_scenario": best_scenario["scenario"],
-        "worst_scenario": worst_scenario["scenario"],
-    }
-
-
-def _attach_stability(product, result):
-    stability = _scenario_stability(product, result["price"], result["strategy"])
-    return {
-        **result,
-        "stability_score": stability["stability_score"],
-        "scenario_stability": stability,
-    }
-
-
-def _scale_metric(values, current_value):
-    lower = min(values)
-    upper = max(values)
-    if math.isclose(lower, upper):
-        return 100.0
-    return ((current_value - lower) / (upper - lower)) * 100.0
-
-
-def _score_result(result, profits, margins, rois):
-    profit_score = _scale_metric(profits, result["profit"])
-    margin_score = _scale_metric(margins, result["profit_margin"])
-    roi_score = _scale_metric(rois, result["ROI"])
-    risk_score = 100.0 - result["risk_score"]
-    stability_score = result.get("stability_score", 50.0)
-    weight_total = sum(SCORING_WEIGHTS.values()) or 1.0
-
-    balanced_score = (
-        profit_score * SCORING_WEIGHTS["profit"]
-        + margin_score * SCORING_WEIGHTS["margin"]
-        + roi_score * SCORING_WEIGHTS["roi"]
-        + risk_score * SCORING_WEIGHTS["risk"]
-        + stability_score * SCORING_WEIGHTS["stability"]
-    ) / weight_total
-
-    return {
-        "balanced_score": _round(balanced_score),
-        "score_breakdown": {
-            "profit_score": _round(profit_score),
-            "margin_score": _round(margin_score),
-            "roi_score": _round(roi_score),
-            "risk_adjusted_score": _round(risk_score),
-            "stability_score": _round(stability_score),
-        },
-    }
-
-
-def get_strategy_prices(product):
-    validate_product(product)
-    optimizer = optimize_price(product)
-    strategy_prices = _strategy_base_prices(product)
-    strategy_prices["AI Recommended"] = optimizer["best_price"]
-    return strategy_prices
-
-
-def optimize_price(product):
-    validate_product(product)
-    lower_bound, upper_bound = _price_bounds(product)
-    steps = 36
-    interval = (upper_bound - lower_bound) / (steps - 1)
+def optimize_price(product, dataset=None, assumptions=None, context=None):
+    dataset = dataset or load_business_dataset()
+    if assumptions is None or context is None:
+        built_assumptions, _, built_context = _build_assumptions(product, dataset)
+        assumptions = assumptions or built_assumptions
+        context = context or built_context
+    lower_bound, upper_bound = _price_bounds(product, dataset, assumptions)
+    steps = 28
+    interval = (upper_bound - lower_bound) / max(steps - 1, 1)
 
     candidates = []
-    price_profit_curve = []
-
+    curve = []
     for index in range(steps):
         price = lower_bound + interval * index
-        result = calculate_financials(product, price, "AI Recommended")
-        result = _attach_stability(product, result)
+        result = _evaluate_price(product, dataset, assumptions, context, price, "Profit Optimal")
         candidates.append(result)
-        price_profit_curve.append(
+        curve.append(
             {
                 "price": result["price"],
                 "profit": result["profit"],
                 "revenue": result["revenue"],
-                "risk_score": result["risk_score"],
+                "demand": result["demand"],
+                "margin": result["profit_margin"],
             }
         )
 
-    profits = [result["profit"] for result in candidates]
-    margins = [result["profit_margin"] for result in candidates]
-    rois = [result["ROI"] for result in candidates]
-
-    ranked_candidates = []
-    for candidate in candidates:
-        score_payload = _score_result(candidate, profits, margins, rois)
-        ranked_candidates.append(
-            {
-                **candidate,
-                "optimization_score": score_payload["balanced_score"],
-                "score_breakdown": score_payload["score_breakdown"],
-            }
-        )
-
-    ranked_candidates.sort(
-        key=lambda item: (
-            item["optimization_score"],
-            item["profit"],
-            -item["risk_score"],
-        ),
-        reverse=True,
-    )
-    best_result = ranked_candidates[0]
-
+    best = max(candidates, key=lambda item: (item["profit"], item["revenue"], -item["risk_score"]))
     return {
-        "best_price": best_result["price"],
-        "best_profit": best_result["profit"],
-        "best_result": best_result,
-        "price_profit_curve": price_profit_curve,
-        "search_range": {"min": lower_bound, "max": upper_bound, "steps": steps},
-        "top_candidates": ranked_candidates[:5],
+        "best_price": best["price"],
+        "best_result": best,
+        "candidates": candidates,
+        "price_profit_curve": curve,
     }
 
 
-def balanced_ranking(results):
-    profits = [result["profit"] for result in results]
-    margins = [result["profit_margin"] for result in results]
-    rois = [result["ROI"] for result in results]
+def _strategy_prices(product, dataset, assumptions, context):
+    lower_bound, upper_bound = _price_bounds(product, dataset, assumptions)
+    competitor_reference = assumptions["competitor_reference"]["value"]
+    target_margin = assumptions["target_margin"]["value"]
+    return_rate = assumptions["return_rate"]["value"]
+    required_price = (
+        product.unit_cost
+        + dataset.business_settings.shipping_cost_avg
+        + product.unit_cost * return_rate
+    ) / max(1.0 - target_margin - dataset.business_settings.payment_fee_rate, 0.18)
 
-    ranked = []
-    for result in results:
-        score_payload = _score_result(result, profits, margins, rois)
-        ranked.append(
-            {
-                **result,
-                "balanced_score": score_payload["balanced_score"],
-                "score_breakdown": score_payload["score_breakdown"],
-            }
-        )
+    optimizer = optimize_price(product, dataset=dataset, assumptions=assumptions, context=context)
 
-    ranked.sort(
-        key=lambda item: (
-            item["balanced_score"],
-            item["profit"],
-            -item["risk_score"],
-        ),
-        reverse=True,
-    )
-    for index, item in enumerate(ranked, start=1):
-        item["rank"] = index
+    candidates = {
+        "Current Price": product.current_price,
+        "Competitive Parity": competitor_reference * 0.995 if competitor_reference else product.current_price,
+        "Volume Push": min(product.current_price * 0.93, (competitor_reference or product.current_price) * 0.98),
+        "Margin Guardrail": required_price,
+        "Premium Lift": max(product.current_price * 1.08, (competitor_reference or product.current_price) * 1.04),
+    }
 
-    return ranked
+    bounded = {}
+    for name, raw_price in candidates.items():
+        bounded[name] = _round(_clamp(raw_price, lower_bound, upper_bound))
+
+    best_profit_price = optimizer["best_price"]
+    best_profit_value = optimizer["best_result"]["profit"]
+    for raw_price in bounded.values():
+        evaluated = _evaluate_price(product, dataset, assumptions, context, raw_price, "Profit Optimal")
+        if evaluated["profit"] > best_profit_value:
+            best_profit_value = evaluated["profit"]
+            best_profit_price = evaluated["price"]
+
+    bounded["Profit Optimal"] = best_profit_price
+    return bounded, optimizer
 
 
-def generate_explanation(best, product):
-    adjusted = get_adjusted_values(product)
-    break_even_units = best["break_even_units"]
-
-    if break_even_units is None:
-        break_even_note = (
-            "Break-even is not reached because the recommended price does not fully cover variable cost."
-        )
-    elif break_even_units <= product.inventory:
-        break_even_note = (
-            f"Break-even is estimated at {break_even_units} units, which remains inside the current inventory level."
-        )
-    else:
-        break_even_note = (
-            f"Break-even is estimated at {break_even_units} units, which exceeds inventory and increases execution risk."
-        )
-
-    elasticity_note = (
-        f"The elasticity value of {product.elasticity} means demand is price-sensitive; "
-        f"at the recommended price, the modeled price effect changes demand by {best['elasticity_effect']}% "
-        f"relative to the blended market reference."
-    )
-
-    scenario_note = (
-        f"The {adjusted['scenario_label'].lower()} adjusts baseline demand to {adjusted['adjusted_base_demand']} units, "
-        f"competitor reference price to ${adjusted['adjusted_competitor_price']}, "
-        f"unit cost to ${adjusted['adjusted_unit_cost']}, and return rate to "
-        f"{_round(adjusted['adjusted_return_rate'] * 100, 2)}%."
-    )
-
-    comparison_context = best.get("comparison_context")
-    if comparison_context:
-        preference_note = (
-            f"It ranks ahead of {comparison_context['next_best_strategy']} by "
-            f"{comparison_context['score_gap']} score points. "
-            f"The selected option improves profit by ${comparison_context['profit_gap']} "
-            f"and changes risk by {comparison_context['risk_gap']} points versus the next-best strategy."
-        )
-    else:
-        preference_note = (
-            "It is preferred because it provides the strongest balance between profitability, margin quality, ROI, and risk."
-        )
-
-    stability = best.get("scenario_stability", {})
-    stability_note = None
-    if stability:
-        stability_note = (
-            f"Across all scenarios, the same price yields mean profit of ${stability['mean_profit']} "
-            f"with a profit standard deviation of ${stability['profit_std_dev']}. "
-            f"This results in a stability score of {stability['stability_score']}."
-        )
-
-    caution = None
-    if best["risk_level"] != "Low":
-        if best.get("risk_factors"):
-            caution = "Key risk drivers: " + " ".join(best["risk_factors"][:2])
-        else:
-            caution = (
-                f"The recommendation still carries {best['risk_level'].lower()} risk under the selected scenario."
-            )
-
-    details = [
-        f"The selected strategy is {best['strategy']} with a recommended price of ${best['price']}. "
-        f"Expected revenue is ${best['revenue']} and expected profit is ${best['profit']}.",
-        f"Projected profit margin is {best['profit_margin']}%, contribution margin is {best['contribution_margin']}%, "
-        f"ROI is {best['ROI']}%, and the overall risk level is {best['risk_level']} ({best['risk_score']}/100).",
-        elasticity_note,
-        scenario_note,
-        preference_note,
-        break_even_note,
+def _build_recommendation_reasons(best, current_option, assumptions, optimizer):
+    reasons = [
+        f"This option produced the highest projected profit across {len(optimizer['candidates'])} candidate prices.",
+        f"Projected profit margin is {best['profit_margin']}% against a target of {best['target_margin']}%.",
+        f"Projected demand lands at {best['demand']} units with a competitor gap of {best['price_gap_vs_competitor']}%.",
+        f"Confidence is {assumptions['baseline_demand']['confidence_level']} to {assumptions['elasticity']['confidence_level']} across the core estimates.",
     ]
-    if stability_note:
-        details.insert(5, stability_note)
+    if current_option:
+        profit_lift = _round(best["profit"] - current_option["profit"])
+        if profit_lift > 0:
+            reasons.append(
+                f"It improves projected profit by {profit_lift} versus staying at the current price."
+            )
+    return reasons[:4]
 
-    return {
-        "title": f"{best['strategy']} is the recommended pricing strategy for {product.name}",
-        "summary": (
-            f"PricePilot recommends ${best['price']} for {product.name} because this option delivers "
-            f"the strongest balanced decision score, not just the highest raw profit. "
-            f"It combines ${best['profit']} expected profit, {best['profit_margin']}% margin, "
-            f"{best['ROI']}% ROI, and {best['risk_level'].lower()} operational risk."
+
+def run_full_analysis(product):
+    validate_product(product)
+    dataset = load_business_dataset()
+    assumptions, overall_confidence, context = _build_assumptions(product, dataset)
+    strategy_prices, optimizer = _strategy_prices(product, dataset, assumptions, context)
+
+    evaluated = []
+    for strategy_name in DISPLAY_STRATEGIES:
+        result = _evaluate_price(
+            product,
+            dataset,
+            assumptions,
+            context,
+            strategy_prices[strategy_name],
+            strategy_name,
+        )
+        result["confidence_level"] = overall_confidence["level"]
+        result["confidence_score"] = overall_confidence["score"]
+        evaluated.append(result)
+
+    evaluated.sort(
+        key=lambda item: (
+            item["profit"],
+            item["revenue"],
+            1 if item["strategy"] == "Profit Optimal" else 0,
+            -item["risk_score"],
         ),
-        "details": details,
-        "caution": caution,
-    }
+        reverse=True,
+    )
+    for rank, item in enumerate(evaluated, start=1):
+        item["rank"] = rank
 
+    best = evaluated[0]
+    current_option = next((item for item in evaluated if item["strategy"] == "Current Price"), None)
+    next_best = evaluated[1] if len(evaluated) > 1 else None
+    comparison_context = None
+    if next_best:
+        comparison_context = {
+            "next_best_strategy": next_best["strategy"],
+            "profit_gap": _round(best["profit"] - next_best["profit"]),
+            "revenue_gap": _round(best["revenue"] - next_best["revenue"]),
+        }
+        best["comparison_context"] = comparison_context
 
-def scenario_snapshot(product, scenario_name):
-    scenario_product = _scenario_product(product, scenario_name)
-    analysis = run_full_analysis(scenario_product)
-    best = analysis["best_strategy"]
+    best["recommendation_reasons"] = _build_recommendation_reasons(best, current_option, assumptions, optimizer)
 
     return {
-        "scenario": scenario_name.upper(),
-        "scenario_label": SCENARIOS[scenario_name.upper()]["label"],
-        "best_strategy": best["strategy"],
-        "recommended_price": best["price"],
-        "price": best["price"],
-        "profit": best["profit"],
-        "revenue": best["revenue"],
-        "profit_margin": best["profit_margin"],
-        "ROI": best["ROI"],
-        "sold_quantity": best["sold_quantity"],
-        "risk_score": best["risk_score"],
-        "risk_level": best["risk_level"],
-        "balanced_score": best["balanced_score"],
-        "stability_score": best.get("stability_score", 50.0),
+        "product": asdict(product),
+        "matched_context": {
+            "match_level": context["match_level"],
+            "matched_product": context.get("matched_product"),
+            "reference_price": context["reference_price"],
+        },
+        "assumptions": assumptions,
+        "overall_confidence": overall_confidence,
+        "best_strategy": best,
+        "strategies": evaluated,
+        "price_profit_curve": optimizer["price_profit_curve"],
+        "current_option": current_option,
+        "explanation": {
+            "title": "",
+            "summary": "",
+            "details": [],
+            "caution": None,
+        },
     }
 
 
 def compare_all_scenarios(product):
     validate_product(product)
-    scenario_results = [scenario_snapshot(product, name) for name in SCENARIOS]
+    scenarios = []
 
-    profits = [item["profit"] for item in scenario_results]
-    margins = [item["profit_margin"] for item in scenario_results]
-    rois = [item["ROI"] for item in scenario_results]
-
-    scored_results = []
-    for item in scenario_results:
-        score_payload = _score_result(
+    for scenario_name in SCENARIOS:
+        result = run_full_analysis(_scenario_product(product, scenario_name))
+        best = result["best_strategy"]
+        scenarios.append(
             {
-                **item,
-                "stability_score": item.get("stability_score", 50.0),
-            },
-            profits,
-            margins,
-            rois,
-        )
-        scored_results.append(
-            {
-                **item,
-                "scenario_score": score_payload["balanced_score"],
+                "scenario": scenario_name,
+                "best_strategy": best["strategy"],
+                "price": best["price"],
+                "demand": best["demand"],
+                "revenue": best["revenue"],
+                "profit": best["profit"],
+                "profit_margin": best["profit_margin"],
+                "confidence_level": result["overall_confidence"]["level"],
+                "confidence_score": result["overall_confidence"]["score"],
+                "risk_level": best["risk_level"],
+                "risk_score": best["risk_score"],
             }
         )
 
-    winning_scenario = max(
-        scored_results,
-        key=lambda item: (item["profit"], -item["risk_score"]),
-    )
-    best_overall_scenario = max(
-        scored_results,
-        key=lambda item: (item["scenario_score"], item["profit"]),
-    )
-
-    aggregate = {
-        "mean_profit": _round(mean(profits)),
-        "profit_std_dev": _round(pstdev(profits) if len(profits) > 1 else 0.0),
-        "mean_risk_score": _round(mean([item["risk_score"] for item in scored_results])),
-        "mean_ROI": _round(mean([item["ROI"] for item in scored_results])),
-        "best_overall_scenario": best_overall_scenario["scenario"],
-    }
-
+    profits = [item["profit"] for item in scenarios]
+    winning = max(scenarios, key=lambda item: (item["profit"], item["revenue"], item["confidence_score"]))
     return {
-        "scenarios": scored_results,
-        "winning_scenario": winning_scenario["scenario"],
-        "winning_summary": winning_scenario,
-        "best_overall_scenario": best_overall_scenario["scenario"],
-        "aggregate": aggregate,
-        "labels": [item["scenario"] for item in scored_results],
-        "profits": [item["profit"] for item in scored_results],
-        "revenues": [item["revenue"] for item in scored_results],
-        "risk_scores": [item["risk_score"] for item in scored_results],
-    }
-
-
-def run_full_analysis(product):
-    validate_product(product)
-    adjusted = get_adjusted_values(product)
-    optimizer = optimize_price(product)
-    strategy_prices = _strategy_base_prices(product)
-
-    strategy_results = []
-    for strategy_name, price in strategy_prices.items():
-        result = calculate_financials(product, price, strategy_name)
-        strategy_results.append(_attach_stability(product, result))
-
-    ai_result = optimizer["best_result"]
-    strategy_results.append(
-        {
-            **ai_result,
-            "strategy": "AI Recommended",
-        }
-    )
-
-    ranked_results = balanced_ranking(strategy_results)
-    best_strategy = ranked_results[0]
-
-    if len(ranked_results) > 1:
-        next_best = ranked_results[1]
-        best_strategy["comparison_context"] = {
-            "next_best_strategy": next_best["strategy"],
-            "score_gap": _round(best_strategy["balanced_score"] - next_best["balanced_score"]),
-            "profit_gap": _round(best_strategy["profit"] - next_best["profit"]),
-            "risk_gap": int(best_strategy["risk_score"] - next_best["risk_score"]),
-        }
-
-    return {
-        "product": asdict(product),
-        "adjusted_inputs": adjusted,
-        "summary": {
-            "best_strategy": best_strategy["strategy"],
-            "recommended_price": best_strategy["price"],
-            "expected_profit": best_strategy["profit"],
-            "profit_margin": best_strategy["profit_margin"],
-            "ROI": best_strategy["ROI"],
-            "risk_level": best_strategy["risk_level"],
-            "stability_score": best_strategy.get("stability_score", 50.0),
+        "scenarios": scenarios,
+        "winning_scenario": winning["scenario"],
+        "best_overall_scenario": winning["scenario"],
+        "aggregate": {
+            "mean_profit": _round(mean(profits)),
+            "profit_std_dev": _round(pstdev(profits) if len(profits) > 1 else 0.0),
+            "mean_revenue": _round(mean(item["revenue"] for item in scenarios)),
         },
-        "best_strategy": best_strategy,
-        "strategies": ranked_results,
-        "optimizer": {
-            "best_price": optimizer["best_price"],
-            "best_profit": optimizer["best_profit"],
-            "best_score": optimizer["best_result"]["optimization_score"],
-            "search_range": optimizer["search_range"],
-        },
-        "price_profit_curve": optimizer["price_profit_curve"],
-        "explanation": generate_explanation(best_strategy, product),
     }

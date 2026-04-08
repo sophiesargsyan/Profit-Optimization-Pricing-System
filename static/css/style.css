@@ -408,6 +408,30 @@ body {
     color: #b42318;
 }
 
+.confidence-pill {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.35rem 0.75rem;
+    border-radius: 999px;
+    font-size: 0.8rem;
+    font-weight: 700;
+}
+
+.confidence-high {
+    background: var(--success-soft);
+    color: #157347;
+}
+
+.confidence-medium {
+    background: var(--warning-soft);
+    color: #946200;
+}
+
+.confidence-low {
+    background: var(--danger-soft);
+    color: #b42318;
+}
+
 .chart-wrap {
     position: relative;
     min-height: 320px;
@@ -426,6 +450,64 @@ body {
 .why-recommended-note {
     color: var(--muted);
     font-size: 0.95rem;
+}
+
+.insight-banner {
+    padding: 1rem 1.05rem;
+    border-radius: 18px;
+    background: linear-gradient(180deg, rgba(219, 235, 244, 0.75) 0%, rgba(255, 255, 255, 0.92) 100%);
+    border: 1px solid rgba(182, 204, 219, 0.92);
+}
+
+.insight-banner strong {
+    display: block;
+    margin-bottom: 0.3rem;
+}
+
+.advanced-panel {
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    background: var(--surface-soft);
+    padding: 1rem;
+}
+
+.advanced-panel summary {
+    cursor: pointer;
+    font-weight: 700;
+    list-style: none;
+}
+
+.advanced-panel summary::-webkit-details-marker {
+    display: none;
+}
+
+.advanced-panel[open] summary {
+    margin-bottom: 0.4rem;
+}
+
+.assumption-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1rem;
+}
+
+.assumption-card {
+    background: var(--surface-soft);
+    border: 1px solid rgba(228, 231, 236, 0.9);
+    border-radius: 18px;
+    padding: 1rem;
+}
+
+.assumption-card h3 {
+    margin: 0.35rem 0 0.45rem;
+    font-size: 1.2rem;
+    font-weight: 800;
+    letter-spacing: -0.04em;
+}
+
+.assumption-card p {
+    color: var(--muted);
+    line-height: 1.6;
 }
 
 .clean-list {
@@ -517,6 +599,22 @@ body {
     background: rgba(15, 23, 42, 0.05);
     filter: blur(10px);
     pointer-events: none;
+}
+
+@media (max-width: 991px) {
+    .sticky-panel {
+        position: static;
+    }
+}
+
+@media (max-width: 767px) {
+    .highlight-metrics {
+        grid-template-columns: 1fr;
+    }
+
+    .assumption-grid {
+        grid-template-columns: 1fr;
+    }
 }
 
 .hero-grid {

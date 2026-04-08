@@ -34,14 +34,6 @@ function createElement(tag, className, text) {
     return element;
 }
 
-function appendMetricLine(container, label, value) {
-    const line = createElement("p", "highlight-meta-line");
-    const strong = createElement("strong", null, `${label}: `);
-    line.appendChild(strong);
-    line.append(value);
-    container.appendChild(line);
-}
-
 function formatCurrency(value) {
     const amount = Number(value ?? 0);
     return new Intl.NumberFormat(CURRENT_LOCALE, {
@@ -59,10 +51,10 @@ function formatNumber(value, digits = 2) {
     });
 }
 
-function createRiskBadge(level) {
+function createConfidenceBadge(level) {
     const normalized = String(level || "Low").toLowerCase();
-    const translated = translateDynamic("risk", level || "Low");
-    return createElement("span", `risk-pill risk-${normalized}`, translated);
+    const translated = translateDynamic("confidence", level || "Low");
+    return createElement("span", `confidence-pill confidence-${normalized}`, translated);
 }
 
 function strategyLabel(name) {
@@ -117,6 +109,16 @@ function setStatus(message, muted = false) {
     status.classList.toggle("text-muted", muted);
 }
 
+function setConfidenceBadge(level) {
+    const target = document.getElementById("analysisConfidence");
+    if (!target) {
+        return;
+    }
+    target.textContent = trf("js.confidence_status", {
+        confidence: translateDynamic("confidence", level || "Low"),
+    });
+}
+
 function renderBestStrategyHighlight(data) {
     const container = document.getElementById("bestStrategyHighlight");
     if (!container) {
@@ -125,40 +127,40 @@ function renderBestStrategyHighlight(data) {
 
     container.replaceChildren();
     const best = data.best_strategy;
-
     const card = createElement("div", "highlight-card");
     const header = createElement("div", "highlight-card-header");
     const eyebrow = createElement("span", "metric-label", tr("js.highlight_label"));
-    const badge = createRiskBadge(best.risk_level);
-    header.append(eyebrow, badge);
+    const confidenceBadge = createConfidenceBadge(data.overall_confidence.level);
+    header.append(eyebrow, confidenceBadge);
 
-    const title = createElement("h3", "highlight-card-title", strategyLabel(best.strategy));
+    const title = createElement("h3", "highlight-card-title", formatCurrency(best.price));
     const subtitle = createElement(
         "p",
         "highlight-card-subtitle",
         trf("js.highlight_summary", {
             strategy: strategyLabel(best.strategy),
-            price: formatCurrency(best.price),
+            demand: formatNumber(best.demand, 0),
+            profit: formatCurrency(best.profit),
         })
     );
 
     const metrics = createElement("div", "highlight-metrics");
-    const metricPrice = createElement("div", "highlight-metric");
-    metricPrice.append(
-        createElement("span", "metric-label", tr("table.price")),
-        createElement("div", "metric-value", formatCurrency(best.price))
+    const revenueMetric = createElement("div", "highlight-metric");
+    revenueMetric.append(
+        createElement("span", "metric-label", tr("table.expected_revenue")),
+        createElement("div", "metric-value", formatCurrency(best.revenue))
     );
-    const metricProfit = createElement("div", "highlight-metric");
-    metricProfit.append(
-        createElement("span", "metric-label", tr("table.profit")),
+    const profitMetric = createElement("div", "highlight-metric");
+    profitMetric.append(
+        createElement("span", "metric-label", tr("table.expected_profit")),
         createElement("div", "metric-value", formatCurrency(best.profit))
     );
-    const metricScore = createElement("div", "highlight-metric");
-    metricScore.append(
-        createElement("span", "metric-label", tr("table.score")),
-        createElement("div", "metric-value", formatNumber(best.balanced_score))
+    const marginMetric = createElement("div", "highlight-metric");
+    marginMetric.append(
+        createElement("span", "metric-label", tr("table.margin")),
+        createElement("div", "metric-value", `${formatNumber(best.profit_margin)}%`)
     );
-    metrics.append(metricPrice, metricProfit, metricScore);
+    metrics.append(revenueMetric, profitMetric, marginMetric);
 
     card.append(header, title, subtitle, metrics);
     container.appendChild(card);
@@ -173,31 +175,16 @@ function renderSummaryCards(data) {
     container.replaceChildren();
     const best = data.best_strategy;
     const cards = [
-        {
-            label: tr("js.best_strategy"),
-            value: strategyLabel(best.strategy),
-            note: trf("js.balanced_score_note", { score: formatNumber(best.balanced_score) }),
-            emphasis: true,
-        },
-        {
-            label: tr("js.recommended_price"),
-            value: formatCurrency(best.price),
-            note: trf("js.profit_note", { profit: formatCurrency(best.profit) }),
-        },
-        {
-            label: tr("js.expected_margin"),
-            value: `${formatNumber(best.profit_margin)}%`,
-            note: trf("js.roi_note", { roi: `${formatNumber(best.ROI)}%` }),
-        },
-        {
-            label: tr("js.risk_level"),
-            value: translateDynamic("risk", best.risk_level),
-            note: trf("js.risk_score_note", { score: best.risk_score }),
-        },
+        { label: tr("js.recommended_price"), value: formatCurrency(best.price), note: strategyLabel(best.strategy), emphasis: true },
+        { label: tr("table.expected_demand"), value: formatNumber(best.demand, 0), note: tr("js.units_note", "Projected units") },
+        { label: tr("table.expected_revenue"), value: formatCurrency(best.revenue), note: tr("js.revenue_note", "Projected monthly revenue") },
+        { label: tr("table.expected_profit"), value: formatCurrency(best.profit), note: tr("js.profit_note_short", "Projected monthly profit") },
+        { label: tr("table.margin"), value: `${formatNumber(best.profit_margin)}%`, note: trf("js.target_margin_note", { margin: `${formatNumber(best.target_margin)}%` }) },
+        { label: tr("table.confidence"), value: translateDynamic("confidence", data.overall_confidence.level), note: trf("js.confidence_note", { score: formatNumber(data.overall_confidence.score) }) },
     ];
 
     cards.forEach((card) => {
-        const col = createElement("div", "col-md-6 col-xl-3");
+        const col = createElement("div", "col-md-6 col-xl-4");
         const wrapper = createElement(
             "div",
             `metric-card summary-card${card.emphasis ? " summary-card-primary" : ""}`
@@ -240,6 +227,31 @@ function renderExplanation(data) {
     }
 }
 
+function renderAssumptions(data) {
+    const container = document.getElementById("assumptionGrid");
+    if (!container) {
+        return;
+    }
+
+    container.replaceChildren();
+    const cards = data.explanation.assumption_cards || [];
+    if (cards.length === 0) {
+        container.appendChild(createElement("div", "empty-state", tr("analyze.empty_assumptions")));
+        return;
+    }
+
+    cards.forEach((item) => {
+        const card = createElement("div", "assumption-card");
+        card.append(
+            createElement("span", "metric-label", item.label),
+            createElement("h3", null, item.value),
+            createElement("p", "mb-2", item.source)
+        );
+        card.appendChild(createConfidenceBadge(item.confidence));
+        container.appendChild(card);
+    });
+}
+
 function renderWhyRecommended(data) {
     const container = document.getElementById("whyRecommended");
     if (!container) {
@@ -247,60 +259,17 @@ function renderWhyRecommended(data) {
     }
 
     container.replaceChildren();
-    const best = data.best_strategy;
+    const reasons = data.explanation.why_recommended || [];
+    if (reasons.length === 0) {
+        container.textContent = tr("analyze.empty_recommendation_reason");
+        return;
+    }
+
     const list = createElement("ul", "explanation-list mb-0");
-    const reasons = [
-        trf("js.why_reason_score", { score: formatNumber(best.balanced_score) }),
-        trf("js.why_reason_financial", {
-            profit: formatCurrency(best.profit),
-            margin: formatNumber(best.profit_margin),
-            roi: formatNumber(best.ROI),
-        }),
-        trf("js.why_reason_stability", {
-            stability_score: formatNumber(best.stability_score || 0),
-        }),
-    ];
-
-    if (best.comparison_context) {
-        reasons.push(
-            trf("js.why_reason_comparison", {
-                next_strategy: strategyLabel(best.comparison_context.next_best_strategy),
-                score_gap: formatNumber(best.comparison_context.score_gap),
-            })
-        );
-    }
-
-    if (best.risk_level === "Low") {
-        reasons.push(
-            trf("js.why_reason_risk_low", {
-                risk_score: best.risk_score,
-            })
-        );
-    } else if (Array.isArray(best.risk_factors) && best.risk_factors.length > 0) {
-        reasons.push(
-            trf("js.why_reason_risk_watch", {
-                factors: best.risk_factors.join(" "),
-            })
-        );
-    }
-
     reasons.forEach((reason) => {
         list.appendChild(createElement("li", null, reason));
     });
-
-    const breakdown = createElement(
-        "p",
-        "why-recommended-note mt-3 mb-0",
-        trf("js.score_breakdown_note", {
-            profit: formatNumber(best.score_breakdown.profit_score),
-            margin: formatNumber(best.score_breakdown.margin_score),
-            roi: formatNumber(best.score_breakdown.roi_score),
-            risk: formatNumber(best.score_breakdown.risk_adjusted_score),
-            stability: formatNumber(best.score_breakdown.stability_score),
-        })
-    );
-
-    container.append(list, breakdown);
+    container.appendChild(list);
 }
 
 function renderStrategyTable(strategies) {
@@ -311,31 +280,28 @@ function renderStrategyTable(strategies) {
 
     tbody.replaceChildren();
     strategies.forEach((strategy) => {
-        const row = createElement(
-            "tr",
-            strategy.rank === 1 ? "strategy-row-best" : ""
-        );
-
+        const row = createElement("tr", strategy.rank === 1 ? "strategy-row-best" : "");
         const rankCell = createElement("td");
         rankCell.appendChild(createElement("span", "rank-pill", `#${strategy.rank}`));
-        const strategyCell = createElement("td", "fw-semibold", strategyLabel(strategy.strategy));
+
+        const optionCell = createElement("td", "fw-semibold", strategyLabel(strategy.strategy));
         const priceCell = createElement("td", null, formatCurrency(strategy.price));
+        const demandCell = createElement("td", null, formatNumber(strategy.demand, 0));
+        const revenueCell = createElement("td", null, formatCurrency(strategy.revenue));
         const profitCell = createElement("td", null, formatCurrency(strategy.profit));
         const marginCell = createElement("td", null, `${formatNumber(strategy.profit_margin)}%`);
-        const roiCell = createElement("td", null, `${formatNumber(strategy.ROI)}%`);
-        const riskCell = createElement("td");
-        riskCell.appendChild(createRiskBadge(strategy.risk_level));
-        const scoreCell = createElement("td", null, formatNumber(strategy.balanced_score));
+        const confidenceCell = createElement("td");
+        confidenceCell.appendChild(createConfidenceBadge(strategy.confidence_level));
 
         row.append(
             rankCell,
-            strategyCell,
+            optionCell,
             priceCell,
+            demandCell,
+            revenueCell,
             profitCell,
             marginCell,
-            roiCell,
-            riskCell,
-            scoreCell
+            confidenceCell
         );
         tbody.appendChild(row);
     });
@@ -360,7 +326,7 @@ function renderPriceProfitChart(curve) {
                     label: tr("js.chart_profit"),
                     data: curve.map((point) => point.profit),
                     borderColor: "#0f172a",
-                    backgroundColor: "rgba(15, 118, 110, 0.12)",
+                    backgroundColor: "rgba(11, 121, 138, 0.14)",
                     tension: 0.32,
                     fill: true,
                     pointRadius: 2,
@@ -408,22 +374,11 @@ function renderScenarioSummary(data) {
         const card = createElement("div", "scenario-mini-card");
         const label = createElement("span", "metric-label", scenarioLabel(scenario.scenario));
         const profit = createElement("h3", null, formatCurrency(scenario.profit));
-        const bestStrategy = createElement(
-            "p",
-            "mb-1",
-            `${tr("js.best_strategy")}: ${strategyLabel(scenario.best_strategy)}`
-        );
-        const price = createElement(
-            "p",
-            "mb-1",
-            `${tr("table.price")}: ${formatCurrency(scenario.price)}`
-        );
-        const risk = createElement(
-            "p",
-            "mb-0",
-            `${tr("table.risk")}: ${translateDynamic("risk", scenario.risk_level)}`
-        );
-        card.append(label, profit, bestStrategy, price, risk);
+        const bestStrategy = createElement("p", "mb-1", `${tr("table.option")}: ${strategyLabel(scenario.best_strategy)}`);
+        const price = createElement("p", "mb-1", `${tr("table.price")}: ${formatCurrency(scenario.price)}`);
+        const demand = createElement("p", "mb-2", `${tr("table.expected_demand")}: ${formatNumber(scenario.demand, 0)}`);
+        card.append(label, profit, bestStrategy, price, demand);
+        card.appendChild(createConfidenceBadge(scenario.confidence_level));
         col.appendChild(card);
         container.appendChild(col);
     });
@@ -442,12 +397,12 @@ function renderScenarioChart(data) {
     scenarioChart = new Chart(canvas, {
         type: "bar",
         data: {
-            labels: data.labels.map((label) => scenarioLabel(label)),
+            labels: data.scenarios.map((item) => scenarioLabel(item.scenario)),
             datasets: [
                 {
                     label: tr("js.chart_profit"),
-                    data: data.profits,
-                    backgroundColor: ["#dcecf9", "#b9ddf0", "#7cc6d6", "#2c8b97"],
+                    data: data.scenarios.map((item) => item.profit),
+                    backgroundColor: ["#dbeaf4", "#b7d6e6", "#6fb2bf", "#1d6f7a"],
                     borderRadius: 10,
                 },
             ],
@@ -496,9 +451,11 @@ async function runAnalysis(form, options = {}) {
         renderBestStrategyHighlight(data);
         renderSummaryCards(data);
         renderExplanation(data);
+        renderAssumptions(data);
         renderWhyRecommended(data);
         renderStrategyTable(data.strategies);
         renderPriceProfitChart(data.price_profit_curve);
+        setConfidenceBadge(data.overall_confidence.level);
         setStatus(
             trf("js.best_strategy_status", {
                 strategy: strategyLabel(data.best_strategy.strategy),

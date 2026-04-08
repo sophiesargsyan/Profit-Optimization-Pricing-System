@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import uuid4
 
+from catalog_profiles import CATEGORY_PROFILES
 from product_defaults import SEED_PORTFOLIO_PRODUCTS
 from storage_utils import read_json_list, write_json
 
@@ -24,8 +25,36 @@ def _seed_records():
     ]
 
 
+def _normalize_product_record(product):
+    normalized = dict(product)
+    normalized_category = str(normalized.get("category", "")).strip()
+    if normalized_category not in CATEGORY_PROFILES:
+        name = str(normalized.get("name", "")).lower()
+        if any(token in name for token in ("serum", "mist", "mask", "skin", "beauty")):
+            normalized["category"] = "Beauty"
+        elif any(token in name for token in ("dress", "shirt", "knit", "pants", "linen")):
+            normalized["category"] = "Fashion"
+        elif any(token in name for token in ("necklace", "earring", "ring", "pearl", "jewel")):
+            normalized["category"] = "Jewelry"
+        else:
+            normalized["category"] = "Accessories"
+    normalized.setdefault("current_price", normalized.get("base_price", ""))
+    normalized.setdefault("units_sold_30d", normalized.get("base_demand", ""))
+    normalized.setdefault("elasticity_override", normalized.get("elasticity", ""))
+    normalized.setdefault("return_rate_override", normalized.get("return_rate", ""))
+    normalized.setdefault("fixed_cost_allocation_override", normalized.get("fixed_cost", ""))
+    normalized.setdefault("target_margin_override", normalized.get("desired_margin", ""))
+    normalized.setdefault("marketing_factor_override", normalized.get("marketing_factor_override", ""))
+    normalized.setdefault("inventory_constraint_override", normalized.get("inventory", ""))
+    return normalized
+
+
 def load_portfolio(file_path):
-    return read_json_list(file_path, _seed_records)
+    products = read_json_list(file_path, _seed_records)
+    normalized = [_normalize_product_record(product) for product in products]
+    if normalized != products:
+        save_portfolio(file_path, normalized)
+    return normalized
 
 
 def save_portfolio(file_path, products):

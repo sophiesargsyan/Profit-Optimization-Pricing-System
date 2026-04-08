@@ -13,23 +13,22 @@ from portfolio_storage import (
     save_portfolio,
     update_portfolio_product,
 )
-from pricing_engine import ProductData, compare_all_scenarios, run_full_analysis, validate_product
+from pricing_engine import (
+    ProductData,
+    compare_all_scenarios,
+    run_full_analysis,
+    validate_product,
+)
 from workspace_service import build_history_entry, build_portfolio_comparison, summarize_portfolio
 
 
 TEST_PRODUCT = ProductData(
-    name="Smart Thermos Bottle",
-    category="Home & Lifestyle",
-    unit_cost=18.0,
-    fixed_cost=3200.0,
-    base_price=39.0,
-    competitor_price=36.0,
-    base_demand=420.0,
-    inventory=500,
-    elasticity=-1.35,
-    marketing_budget=1400.0,
-    return_rate=0.06,
-    desired_margin=28.0,
+    name="Luna Crossbody Bag",
+    category="Accessories",
+    unit_cost=26.0,
+    current_price=72.0,
+    units_sold_30d=250.0,
+    competitor_price=None,
     scenario="NORMAL",
 )
 
@@ -50,10 +49,41 @@ class PricingEngineTests(unittest.TestCase):
         self.assertIn("best_strategy", analysis)
         self.assertIn("strategies", analysis)
         self.assertIn("price_profit_curve", analysis)
-        self.assertIn("explanation", analysis)
-        self.assertGreaterEqual(len(analysis["strategies"]), 6)
-        self.assertIn("balanced_score", analysis["best_strategy"])
-        self.assertIn("risk_level", analysis["best_strategy"])
+        self.assertIn("assumptions", analysis)
+        self.assertIn("overall_confidence", analysis)
+        self.assertGreaterEqual(len(analysis["strategies"]), 5)
+        self.assertIn("confidence_level", analysis["best_strategy"])
+        self.assertIn("baseline_demand", analysis["assumptions"])
+
+    def test_matching_product_uses_history_backed_estimates(self):
+        analysis = run_full_analysis(TEST_PRODUCT)
+
+        self.assertEqual(analysis["assumptions"]["baseline_demand"]["source"], "product_history")
+        self.assertEqual(analysis["assumptions"]["elasticity"]["source"], "product_history")
+        self.assertEqual(analysis["assumptions"]["return_rate"]["source"], "product_history")
+        self.assertIn(analysis["overall_confidence"]["level"], {"High", "Medium"})
+
+    def test_unmatched_product_falls_back_to_category_logic(self):
+        product = ProductData(
+            name="New Capsule Accessory",
+            category="Accessories",
+            unit_cost=24.0,
+            current_price=69.0,
+            units_sold_30d=180.0,
+            competitor_price=None,
+            scenario="NORMAL",
+        )
+        analysis = run_full_analysis(product)
+
+        self.assertIn(
+            analysis["assumptions"]["elasticity"]["source"],
+            {"category_history", "category_default"},
+        )
+        self.assertIn(
+            analysis["assumptions"]["return_rate"]["source"],
+            {"category_history", "category_default"},
+        )
+        self.assertIn(analysis["overall_confidence"]["level"], {"Medium", "Low"})
 
     def test_compare_all_scenarios_returns_aggregate_metrics(self):
         comparison = compare_all_scenarios(TEST_PRODUCT)
@@ -87,20 +117,21 @@ class WorkspaceStorageTests(unittest.TestCase):
         self.assertGreaterEqual(len(products), 3)
         self.assertIn("id", products[0])
         self.assertIn("name", products[0])
+        self.assertIn("current_price", products[0])
 
     def test_portfolio_add_edit_delete_logic(self):
         save_portfolio(self.portfolio_file, [])
 
         added = add_portfolio_product(self.portfolio_file, test_product_payload())
         self.assertEqual(len(load_portfolio(self.portfolio_file)), 1)
-        self.assertEqual(added["name"], "Smart Thermos Bottle")
+        self.assertEqual(added["name"], "Luna Crossbody Bag")
 
         updated = update_portfolio_product(
             self.portfolio_file,
             added["id"],
-            test_product_payload(name="Updated Bottle", scenario="HIGH"),
+            test_product_payload(name="Updated Bag", scenario="HIGH"),
         )
-        self.assertEqual(updated["name"], "Updated Bottle")
+        self.assertEqual(updated["name"], "Updated Bag")
         self.assertEqual(updated["scenario"], "HIGH")
         self.assertEqual(len(load_portfolio(self.portfolio_file)), 1)
 
@@ -117,9 +148,10 @@ class WorkspaceStorageTests(unittest.TestCase):
         history_entries = load_history(self.history_file)
 
         self.assertEqual(len(history_entries), 1)
-        self.assertEqual(history_entries[0]["product_name"], "Smart Thermos Bottle")
+        self.assertEqual(history_entries[0]["product_name"], "Luna Crossbody Bag")
         self.assertEqual(history_entries[0]["selected_scenario"], "NORMAL")
         self.assertIn("recommended_strategy", history_entries[0])
+        self.assertEqual(history_entries[0]["confidence_level"], analysis["overall_confidence"]["level"])
         self.assertEqual(history_entries[0]["timestamp"], "2026-04-06T10:00:00")
 
     def test_export_generation_and_summary_helpers(self):
@@ -136,9 +168,9 @@ class WorkspaceStorageTests(unittest.TestCase):
         history_json = history_to_json([history_entry])
         summary = summarize_portfolio(rows, [history_entry])
 
-        self.assertIn("product_name,category,scenario", portfolio_csv)
-        self.assertIn("recommended_strategy", history_csv)
-        self.assertIn('"product_name": "Smart Thermos Bottle"', history_json)
+        self.assertIn("product_name,category,scenario,current_price", portfolio_csv)
+        self.assertIn("confidence_level", history_csv)
+        self.assertIn('"product_name": "Luna Crossbody Bag"', history_json)
         self.assertEqual(summary["total_products"], 1)
         self.assertEqual(summary["history_entries"], 1)
 
@@ -176,7 +208,7 @@ class FlaskAppTests(unittest.TestCase):
             with client.session_transaction() as session:
                 self.assertEqual(session["lang"], "hy")
 
-    def test_api_analyze_returns_explanation_for_language_routes(self):
+    def test_api_analyze_returns_explanation_and_assumptions(self):
         with self.client as client:
             client.get("/?lang=ru")
             response = client.post("/api/analyze", json=self.payload)
@@ -184,7 +216,9 @@ class FlaskAppTests(unittest.TestCase):
 
         self.assertTrue(data["success"])
         self.assertIsNone(data["error"])
-        self.assertIn("Рекомендуемый ценовой шаг", data["data"]["explanation"]["title"])
+        self.assertIn("title", data["data"]["explanation"])
+        self.assertGreater(len(data["data"]["explanation"]["assumption_cards"]), 0)
+        self.assertIn("overall_confidence", data["data"])
 
     def test_api_analyze_saves_history_entry(self):
         response = self.client.post("/api/analyze", json=self.payload)
@@ -194,6 +228,7 @@ class FlaskAppTests(unittest.TestCase):
         self.assertTrue(data["success"])
         self.assertEqual(len(history_entries), 1)
         self.assertEqual(history_entries[0]["product_name"], self.payload["name"])
+        self.assertIn("confidence_level", history_entries[0])
 
     def test_api_scenario_compare_still_returns_expected_data(self):
         response = self.client.post("/api/scenario-compare", json=self.payload)
@@ -212,12 +247,12 @@ class FlaskAppTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertIn("text/csv", response.content_type)
-        self.assertIn("product_name,category,scenario", body)
-        self.assertIn("Smart Thermos Bottle", body)
+        self.assertIn("product_name,category,scenario,current_price", body)
+        self.assertIn("Luna Crossbody Bag", body)
 
     def test_api_validation_errors_are_consistent(self):
         invalid_payload = dict(self.payload)
-        invalid_payload["base_price"] = 0
+        invalid_payload["current_price"] = 0
 
         response = self.client.post("/api/analyze", json=invalid_payload)
         data = response.get_json()

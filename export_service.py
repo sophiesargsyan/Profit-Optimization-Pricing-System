@@ -9,13 +9,13 @@ PORTFOLIO_EXPORT_FIELDS = [
     "product_name",
     "category",
     "scenario",
-    "base_price",
+    "current_price",
     "recommended_price",
-    "expected_demand",
+    "projected_demand",
     "expected_revenue",
     "expected_profit",
     "margin",
-    "risk_level",
+    "confidence_level",
     "recommended_strategy",
 ]
 
@@ -25,8 +25,9 @@ HISTORY_EXPORT_FIELDS = [
     "selected_scenario",
     "recommended_strategy",
     "recommended_price",
+    "projected_demand",
     "expected_profit",
-    "risk_level",
+    "confidence_level",
 ]
 
 

@@ -4,8 +4,8 @@
 
 {% block content %}
 {% set strongest_profit_scenario = reference_scenarios.scenarios|sort(attribute='profit', reverse=true)|first %}
-{% set highest_risk_scenario = reference_scenarios.scenarios|sort(attribute='risk_score', reverse=true)|first %}
-{% set best_overall_scenario = reference_scenarios.scenarios|sort(attribute='scenario_score', reverse=true)|first %}
+{% set best_confidence_scenario = reference_scenarios.scenarios|sort(attribute='confidence_score', reverse=true)|first %}
+{% set best_overall_scenario = reference_scenarios.scenarios|sort(attribute='profit', reverse=true)|first %}
 
 <section class="section-space">
     <div class="container">
@@ -72,9 +72,9 @@
                 </div>
                 <div class="col-md-6 col-xl-4">
                     <div class="metric-card summary-card">
-                        <span class="metric-label">{{ t["dashboard.highest_risk_scenario"] }}</span>
-                        <div class="metric-value">{{ t["scenario." ~ highest_risk_scenario.scenario] }}</div>
-                        <p class="metric-note">{{ t["dashboard.risk_score"] }}: {{ highest_risk_scenario.risk_score }}/100</p>
+                        <span class="metric-label">{{ t["dashboard.best_confidence"] }}</span>
+                        <div class="metric-value">{{ t["scenario." ~ best_confidence_scenario.scenario] }}</div>
+                        <p class="metric-note">{{ t["confidence." ~ best_confidence_scenario.confidence_level] }}</p>
                     </div>
                 </div>
             </div>
@@ -99,25 +99,56 @@
                 </div>
                 <div class="col-md-6 col-xl-3">
                     <div class="metric-card">
-                        <span class="metric-label">{{ t["dashboard.expected_profit"] }}</span>
-                        <h3>${{ reference_analysis.best_strategy.profit }}</h3>
-                        <p class="text-muted mb-0">{{ t["dashboard.profit_margin"] }}: {{ reference_analysis.best_strategy.profit_margin }}%</p>
+                        <span class="metric-label">{{ t["dashboard.expected_demand"] }}</span>
+                        <h3>{{ reference_analysis.best_strategy.demand }}</h3>
+                        <p class="text-muted mb-0">{{ t["dashboard.expected_profit"] }}: ${{ reference_analysis.best_strategy.profit }}</p>
                     </div>
                 </div>
                 <div class="col-md-6 col-xl-3">
                     <div class="metric-card">
-                        <span class="metric-label">{{ t["dashboard.roi"] }}</span>
-                        <h3>{{ reference_analysis.best_strategy.ROI }}%</h3>
-                        <p class="text-muted mb-0">{{ t["dashboard.break_even"] }}: {{ reference_analysis.best_strategy.break_even_units or t["common.not_available"] }} {{ t["dashboard.units"] }}</p>
+                        <span class="metric-label">{{ t["dashboard.profit_margin"] }}</span>
+                        <h3>{{ reference_analysis.best_strategy.profit_margin }}%</h3>
+                        <p class="text-muted mb-0">{{ t["dashboard.revenue"] }}: ${{ reference_analysis.best_strategy.revenue }}</p>
                     </div>
                 </div>
                 <div class="col-md-6 col-xl-3">
                     <div class="metric-card">
-                        <span class="metric-label">{{ t["dashboard.risk_level"] }}</span>
-                        <h3>{{ t["risk." ~ reference_analysis.best_strategy.risk_level] }}</h3>
-                        <p class="text-muted mb-0">{{ t["dashboard.risk_score"] }}: {{ reference_analysis.best_strategy.risk_score }}/100</p>
+                        <span class="metric-label">{{ t["dashboard.confidence"] }}</span>
+                        <h3>{{ t["confidence." ~ reference_analysis.overall_confidence.level] }}</h3>
+                        <p class="text-muted mb-0">{{ t["dashboard.option"] }}: {{ t["strategy." ~ reference_analysis.best_strategy.strategy] }}</p>
                     </div>
                 </div>
+            </div>
+        </div>
+
+        <div class="app-card mb-4">
+            <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
+                <div>
+                    <h2 class="section-title mb-1">{{ t["dashboard.assumptions"] }}</h2>
+                    <p class="text-muted mb-0">{{ t["dashboard.assumptions_subtitle"] }}</p>
+                </div>
+                <span class="soft-badge">{{ t["confidence." ~ reference_analysis.overall_confidence.level] }}</span>
+            </div>
+
+            <div class="assumption-grid">
+                {% for key, assumption in reference_analysis.assumptions.items() %}
+                <div class="assumption-card">
+                    <span class="metric-label">{{ t.get("dashboard.assumption." ~ key, key|replace('_', ' ')) }}</span>
+                    <h3>
+                        {% if key == "competitor_reference" or key == "fixed_cost_allocation" %}
+                        ${{ assumption.value }}
+                        {% elif key == "return_rate" or key == "target_margin" %}
+                        {{ (assumption.value * 100)|round(2) }}%
+                        {% elif key == "baseline_demand" %}
+                        {{ assumption.value|round(0) }} units
+                        {% else %}
+                        {{ assumption.value }}
+                        {% endif %}
+                    </h3>
+                    <p class="mb-1">{{ assumption.detail }}</p>
+                    <span class="confidence-pill confidence-{{ assumption.confidence_level|lower }}">{{ t["confidence." ~ assumption.confidence_level] }}</span>
+                </div>
+                {% endfor %}
             </div>
         </div>
 
@@ -139,11 +170,11 @@
                                 <span class="metric-label">{{ t["scenario." ~ scenario.scenario] }}</span>
                                 <h3 class="mt-2 mb-0">{{ t["strategy." ~ scenario.best_strategy] }}</h3>
                             </div>
-                            <span class="risk-pill risk-{{ scenario.risk_level|lower }}">{{ t["risk." ~ scenario.risk_level] }}</span>
+                            <span class="confidence-pill confidence-{{ scenario.confidence_level|lower }}">{{ t["confidence." ~ scenario.confidence_level] }}</span>
                         </div>
                         <p class="mb-1">{{ t["dashboard.price"] }}: ${{ scenario.price }}</p>
                         <p class="mb-1">{{ t["dashboard.profit"] }}: ${{ scenario.profit }}</p>
-                        <p class="mb-0">{{ t["dashboard.revenue"] }}: ${{ scenario.revenue }}</p>
+                        <p class="mb-0">{{ t["dashboard.expected_demand"] }}: {{ scenario.demand }}</p>
                     </div>
                 </div>
                 {% endfor %}

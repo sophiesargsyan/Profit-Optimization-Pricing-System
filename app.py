@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import json
 import os
 import secrets
@@ -17,6 +19,8 @@ from flask import (
     url_for,
 )
 
+from catalog_profiles import CATEGORY_PROFILES
+from data_repository import load_business_dataset
 from export_service import history_to_csv, history_to_json, portfolio_analysis_to_csv
 from history_storage import append_history_entry, load_history
 from portfolio_storage import (
@@ -36,7 +40,6 @@ from workspace_service import (
 
 app = Flask(__name__)
 app.config["JSON_SORT_KEYS"] = False
-# A deployment should supply FLASK_SECRET_KEY, but local runs still work without manual setup.
 app.config["SECRET_KEY"] = os.environ.get("FLASK_SECRET_KEY") or secrets.token_hex(32)
 app.config["MAX_CONTENT_LENGTH"] = 64 * 1024
 
@@ -56,31 +59,73 @@ app.config.setdefault("HISTORY_FILE", DATA_DIR / "history.json")
 
 STRING_FIELDS = {
     "name": {"default": "Product", "label": "Product name", "max_length": 120},
-    "category": {"default": "General", "label": "Category", "max_length": 80},
+    "category": {"default": "Accessories", "label": "Category", "max_length": 80},
 }
-NUMERIC_FIELDS = {
+
+REQUIRED_NUMERIC_FIELDS = {
     "unit_cost": {"label": "Unit cost", "min": 0, "max": 1_000_000, "type": float},
-    "fixed_cost": {"label": "Fixed cost", "min": 0, "max": 100_000_000, "type": float},
-    "base_price": {"label": "Base price", "min": 0.01, "max": 1_000_000, "type": float},
-    "competitor_price": {
-        "label": "Competitor price",
-        "min": 0.01,
+    "current_price": {"label": "Current price", "min": 0.01, "max": 1_000_000, "type": float},
+    "units_sold_30d": {
+        "label": "Units sold in the last 30 days",
+        "min": 1,
         "max": 1_000_000,
         "type": float,
     },
-    "base_demand": {"label": "Base demand", "min": 1, "max": 1_000_000, "type": float},
-    "inventory": {"label": "Inventory", "min": 1, "max": 1_000_000, "type": int},
-    "elasticity": {"label": "Elasticity", "min": -5.0, "max": -0.05, "type": float},
-    "marketing_budget": {
-        "label": "Marketing budget",
-        "min": 0,
-        "max": 100_000_000,
+}
+
+OPTIONAL_NUMERIC_FIELDS = {
+    "competitor_price": {"label": "Competitor price", "min": 0.01, "max": 1_000_000, "type": float},
+    "elasticity_override": {"label": "Elasticity", "min": -4.5, "max": -0.2, "type": float},
+    "return_rate_override": {
+        "label": "Return rate",
+        "min": 0.0,
+        "max": 0.45,
+        "type": float,
+        "percent": True,
+    },
+    "fixed_cost_allocation_override": {
+        "label": "Fixed cost allocation",
+        "min": 0.0,
+        "max": 1_000_000,
         "type": float,
     },
-    "return_rate": {"label": "Return rate", "min": 0, "max": 0.49, "type": float},
-    "desired_margin": {"label": "Desired margin", "min": 0.1, "max": 89.9, "type": float},
+    "target_margin_override": {
+        "label": "Target margin",
+        "min": 0.1,
+        "max": 0.8,
+        "type": float,
+        "percent": True,
+    },
+    "marketing_factor_override": {
+        "label": "Marketing factor",
+        "min": 0.7,
+        "max": 1.5,
+        "type": float,
+    },
+    "inventory_constraint_override": {
+        "label": "Inventory constraint",
+        "min": 1,
+        "max": 1_000_000,
+        "type": int,
+    },
 }
-PRODUCT_FORM_FIELDS = tuple(STRING_FIELDS.keys()) + tuple(NUMERIC_FIELDS.keys()) + ("scenario",)
+
+PRODUCT_FORM_FIELDS = (
+    tuple(STRING_FIELDS.keys())
+    + tuple(REQUIRED_NUMERIC_FIELDS.keys())
+    + tuple(OPTIONAL_NUMERIC_FIELDS.keys())
+    + ("scenario",)
+)
+
+LEGACY_FIELD_ALIASES = {
+    "current_price": ("base_price",),
+    "units_sold_30d": ("base_demand",),
+    "elasticity_override": ("elasticity",),
+    "return_rate_override": ("return_rate",),
+    "fixed_cost_allocation_override": ("fixed_cost",),
+    "target_margin_override": ("desired_margin",),
+    "inventory_constraint_override": ("inventory",),
+}
 
 
 def _load_translation_file(lang):
@@ -105,18 +150,13 @@ def get_translations(lang):
     return base
 
 
-def translate_dynamic(translations, prefix, value):
-    return translations.get(f"{prefix}.{value}", value)
-
-
-def format_translation(translations, key, **kwargs):
-    template = translations.get(key, key)
-    return template.format(**kwargs)
-
-
 def translated_message(key, fallback):
     translations = getattr(g, "translations", get_translations(DEFAULT_LANG))
     return translations.get(key, fallback)
+
+
+def translate_dynamic(translations, prefix, value):
+    return translations.get(f"{prefix}.{value}", value)
 
 
 def get_current_language():
@@ -178,14 +218,39 @@ def _boolean_input(value, default=True):
     return bool(value)
 
 
+def _first_payload_value(payload, field_name):
+    if field_name in payload:
+        return payload.get(field_name)
+    for alias in LEGACY_FIELD_ALIASES.get(field_name, ()):
+        if alias in payload:
+            return payload.get(alias)
+    return None
+
+
+def _format_form_number(value, percent=False):
+    if value in (None, ""):
+        return ""
+    numeric_value = float(value)
+    if percent and abs(numeric_value) <= 1:
+        numeric_value *= 100
+    if numeric_value.is_integer():
+        return str(int(numeric_value))
+    return str(round(numeric_value, 4))
+
+
 def _portfolio_form_values(source=None):
     values = dict(EMPTY_PRODUCT)
     if source is None:
         return values
 
     for field in PRODUCT_FORM_FIELDS:
-        if field in source:
-            values[field] = source.get(field)
+        raw_value = _first_payload_value(source, field)
+        if raw_value in (None, ""):
+            continue
+        if field in {"return_rate_override", "target_margin_override"}:
+            values[field] = _format_form_number(raw_value, percent=True)
+        else:
+            values[field] = raw_value
     return values
 
 
@@ -193,129 +258,183 @@ def _sort_portfolio_products(products):
     return sorted(products, key=lambda item: item.get("updated_at", ""), reverse=True)
 
 
-def build_localized_explanation(result, lang):
-    translations = get_translations(lang)
-    product = result["product"]
-    adjusted = result["adjusted_inputs"]
-    best = result["best_strategy"]
-    strategy_name = translate_dynamic(translations, "strategy", best["strategy"])
-    risk_name = translate_dynamic(translations, "risk", best["risk_level"])
-    scenario_name = translate_dynamic(translations, "scenario", product["scenario"])
+def _parse_string_field(payload, field_name):
+    config = STRING_FIELDS[field_name]
+    value = str(_first_payload_value(payload, field_name) or config["default"]).strip()
+    if not value:
+        raise ValueError(f"{config['label']} is required.")
+    if len(value) > config["max_length"]:
+        raise ValueError(f"{config['label']} must be at most {config['max_length']} characters.")
+    if field_name == "category":
+        normalized = next(
+            (category for category in CATEGORY_PROFILES if category.lower() == value.lower()),
+            None,
+        )
+        if normalized is None:
+            raise ValueError(f"Category must be one of: {', '.join(CATEGORY_PROFILES)}.")
+        return normalized
+    return value
 
-    comparison_context = best.get("comparison_context", {})
-    next_best_name = translate_dynamic(
-        translations,
-        "strategy",
-        comparison_context.get("next_best_strategy", ""),
+
+def _parse_required_numeric_field(payload, field_name):
+    config = REQUIRED_NUMERIC_FIELDS[field_name]
+    raw_value = _first_payload_value(payload, field_name)
+    if raw_value in (None, ""):
+        raise ValueError(f"{config['label']} is required.")
+
+    try:
+        parsed = float(raw_value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{config['label']} must be a valid number.") from exc
+
+    if parsed < config["min"] or parsed > config["max"]:
+        raise ValueError(f"{config['label']} must be between {config['min']} and {config['max']}.")
+
+    return int(parsed) if config["type"] is int else float(parsed)
+
+
+def _parse_optional_numeric_field(payload, field_name):
+    config = OPTIONAL_NUMERIC_FIELDS[field_name]
+    raw_value = _first_payload_value(payload, field_name)
+    if raw_value in (None, ""):
+        return None
+
+    try:
+        parsed = float(raw_value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{config['label']} must be a valid number.") from exc
+
+    if config.get("percent") and parsed > 1:
+        parsed /= 100.0
+
+    if parsed < config["min"] or parsed > config["max"]:
+        raise ValueError(f"{config['label']} must be between {config['min']} and {config['max']}.")
+
+    return int(parsed) if config["type"] is int else float(parsed)
+
+
+def parse_product(data, scenario_override=None):
+    if not isinstance(data, dict):
+        raise ValueError(translated_message("api.error.invalid_payload", "Invalid request data."))
+
+    scenario = scenario_override or str(_first_payload_value(data, "scenario") or "NORMAL").upper()
+    if scenario not in {"LOW", "NORMAL", "HIGH", "PROMO"}:
+        raise ValueError("Scenario must be LOW, NORMAL, HIGH, or PROMO.")
+
+    return ProductData(
+        name=_parse_string_field(data, "name"),
+        category=_parse_string_field(data, "category"),
+        unit_cost=_parse_required_numeric_field(data, "unit_cost"),
+        current_price=_parse_required_numeric_field(data, "current_price"),
+        units_sold_30d=_parse_required_numeric_field(data, "units_sold_30d"),
+        competitor_price=_parse_optional_numeric_field(data, "competitor_price"),
+        elasticity_override=_parse_optional_numeric_field(data, "elasticity_override"),
+        return_rate_override=_parse_optional_numeric_field(data, "return_rate_override"),
+        fixed_cost_allocation_override=_parse_optional_numeric_field(data, "fixed_cost_allocation_override"),
+        target_margin_override=_parse_optional_numeric_field(data, "target_margin_override"),
+        marketing_factor_override=_parse_optional_numeric_field(data, "marketing_factor_override"),
+        inventory_constraint_override=_parse_optional_numeric_field(data, "inventory_constraint_override"),
+        scenario=scenario,
     )
 
-    if best["break_even_units"] is None:
-        break_even_note = translations["explanation.detail.break_even.none"]
-    elif best["break_even_units"] <= product["inventory"]:
-        break_even_note = format_translation(
-            translations,
-            "explanation.detail.break_even.inside",
-            break_even_units=best["break_even_units"],
-            inventory=product["inventory"],
-        )
-    else:
-        break_even_note = format_translation(
-            translations,
-            "explanation.detail.break_even.outside",
-            break_even_units=best["break_even_units"],
-            inventory=product["inventory"],
-        )
 
-    details = [
-        format_translation(
-            translations,
-            "explanation.detail.selection",
-            strategy=strategy_name,
-            price=best["price"],
-            revenue=best["revenue"],
-            profit=best["profit"],
-        ),
-        format_translation(
-            translations,
-            "explanation.detail.metrics",
-            profit_margin=best["profit_margin"],
-            contribution_margin=best["contribution_margin"],
-            roi=best["ROI"],
-            risk_level=risk_name,
-            risk_score=best["risk_score"],
-        ),
-        format_translation(
-            translations,
-            "explanation.detail.elasticity",
-            elasticity=product["elasticity"],
-            elasticity_effect=best["elasticity_effect"],
-        ),
-        format_translation(
-            translations,
-            "explanation.detail.scenario",
-            scenario=scenario_name,
-            adjusted_demand=adjusted["adjusted_base_demand"],
-            competitor_price=adjusted["adjusted_competitor_price"],
-            adjusted_unit_cost=adjusted["adjusted_unit_cost"],
-            adjusted_return_rate=round(adjusted["adjusted_return_rate"] * 100, 2),
-        ),
+def build_reference_product():
+    return parse_product(DEFAULT_PRODUCT)
+
+
+def _format_currency(value):
+    return f"${_round_value(value)}"
+
+
+def _round_value(value, digits=2):
+    return round(float(value), digits)
+
+
+def _format_percent(value):
+    return f"{_round_value(value, 2)}%"
+
+
+def build_localized_explanation(result, lang):
+    translations = get_translations(lang)
+    best = result["best_strategy"]
+    product = result["product"]
+    assumptions = result["assumptions"]
+    confidence = result["overall_confidence"]
+    scenario_label = translate_dynamic(translations, "scenario", product["scenario"])
+
+    assumption_cards = [
+        {
+            "label": translations.get("explanation.baseline", "Baseline demand"),
+            "value": f"{_round_value(assumptions['baseline_demand']['value'])} units / month",
+            "source": assumptions["baseline_demand"]["detail"],
+            "confidence": translate_dynamic(translations, "confidence", assumptions["baseline_demand"]["confidence_level"]),
+        },
+        {
+            "label": translations.get("explanation.seasonality", "Seasonality"),
+            "value": f"{assumptions['seasonality']['value']}x for the current pricing cycle",
+            "source": assumptions["seasonality"]["detail"],
+            "confidence": translate_dynamic(translations, "confidence", assumptions["seasonality"]["confidence_level"]),
+        },
+        {
+            "label": translations.get("explanation.elasticity", "Demand sensitivity"),
+            "value": str(assumptions["elasticity"]["value"]),
+            "source": assumptions["elasticity"]["detail"],
+            "confidence": translate_dynamic(translations, "confidence", assumptions["elasticity"]["confidence_level"]),
+        },
+        {
+            "label": translations.get("explanation.return_rate", "Return rate"),
+            "value": _format_percent(assumptions["return_rate"]["value"] * 100),
+            "source": assumptions["return_rate"]["detail"],
+            "confidence": translate_dynamic(translations, "confidence", assumptions["return_rate"]["confidence_level"]),
+        },
+        {
+            "label": translations.get("explanation.competitor", "Competitor reference"),
+            "value": _format_currency(assumptions["competitor_reference"]["value"]),
+            "source": assumptions["competitor_reference"]["detail"],
+            "confidence": translate_dynamic(translations, "confidence", assumptions["competitor_reference"]["confidence_level"]),
+        },
+        {
+            "label": translations.get("explanation.fixed_cost", "Fixed cost allocation"),
+            "value": _format_currency(assumptions["fixed_cost_allocation"]["value"]),
+            "source": assumptions["fixed_cost_allocation"]["detail"],
+            "confidence": translate_dynamic(translations, "confidence", assumptions["fixed_cost_allocation"]["confidence_level"]),
+        },
     ]
 
-    if comparison_context:
-        details.append(
-            format_translation(
-                translations,
-                "explanation.detail.preference",
-                next_best_strategy=next_best_name,
-                score_gap=comparison_context["score_gap"],
-                profit_gap=comparison_context["profit_gap"],
-                risk_gap=comparison_context["risk_gap"],
-            )
-        )
-
-    stability = best.get("scenario_stability")
-    if stability:
-        details.append(
-            format_translation(
-                translations,
-                "explanation.detail.stability",
-                mean_profit=stability["mean_profit"],
-                profit_std_dev=stability["profit_std_dev"],
-                stability_score=stability["stability_score"],
-            )
-        )
-
-    details.append(break_even_note)
-
     caution = None
-    if best["risk_level"] in {"Medium", "High"}:
-        caution_key = f"explanation.caution.{best['risk_level'].lower()}"
-        caution = format_translation(
-            translations,
-            caution_key,
-            risk_level=risk_name,
+    if confidence["level"] == "Low":
+        caution = translations.get(
+            "explanation.caution.low",
+            "Confidence is low because multiple assumptions fell back to category or default benchmarks.",
+        )
+    elif best["risk_level"] == "High":
+        caution = translations.get(
+            "explanation.caution.risk",
+            "The recommendation is profitable, but it carries meaningful execution risk under the current assumptions.",
         )
 
     return {
-        "title": format_translation(
-            translations,
+        "title": translations.get(
             "explanation.title",
-            strategy=strategy_name,
-            product=product["name"],
+            f"Recommended price for {product['name']}",
         ),
-        "summary": format_translation(
-            translations,
+        "summary": translations.get(
             "explanation.summary",
-            strategy=strategy_name,
-            price=best["price"],
-            product=product["name"],
-            profit=best["profit"],
-            profit_margin=best["profit_margin"],
-            roi=best["ROI"],
-            risk_level=risk_name.lower(),
+            "PricePilot combined recent demand, historical pricing behavior, seasonality, and competitor context to produce this recommendation.",
         ),
-        "details": details,
+        "details": [
+            f"{translations.get('explanation.detail.price', 'Recommended price')}: {_format_currency(best['price'])}",
+            f"{translations.get('explanation.detail.demand', 'Projected demand')}: {_round_value(best['demand'])} units",
+            f"{translations.get('explanation.detail.revenue', 'Projected revenue')}: {_format_currency(best['revenue'])}",
+            f"{translations.get('explanation.detail.profit', 'Projected profit')}: {_format_currency(best['profit'])}",
+            f"{translations.get('explanation.detail.margin', 'Estimated margin')}: {_format_percent(best['profit_margin'])}",
+            f"{translations.get('explanation.detail.confidence', 'Confidence')}: {translate_dynamic(translations, 'confidence', confidence['level'])}",
+            f"{translations.get('explanation.detail.scenario', 'Scenario')}: {scenario_label}",
+        ],
         "caution": caution,
+        "assumption_cards": assumption_cards,
+        "confidence_label": translate_dynamic(translations, "confidence", confidence["level"]),
+        "why_recommended": list(best.get("recommendation_reasons", [])),
     }
 
 
@@ -343,64 +462,6 @@ def inject_i18n():
     }
 
 
-def _parse_string_field(payload, field_name):
-    config = STRING_FIELDS[field_name]
-    value = str(payload.get(field_name, config["default"])).strip()
-    if not value:
-        raise ValueError(f"{config['label']} is required.")
-    if len(value) > config["max_length"]:
-        raise ValueError(f"{config['label']} must be at most {config['max_length']} characters.")
-    return value
-
-
-def _parse_numeric_field(payload, field_name):
-    config = NUMERIC_FIELDS[field_name]
-    raw_value = payload.get(field_name)
-    if raw_value in (None, ""):
-        raise ValueError(f"{config['label']} is required.")
-
-    try:
-        parsed = float(raw_value)
-    except (TypeError, ValueError) as exc:
-        raise ValueError(f"{config['label']} must be a valid number.") from exc
-
-    if parsed < config["min"] or parsed > config["max"]:
-        raise ValueError(
-            f"{config['label']} must be between {config['min']} and {config['max']}."
-        )
-
-    return int(parsed) if config["type"] is int else float(parsed)
-
-
-def parse_product(data, scenario_override=None):
-    if not isinstance(data, dict):
-        raise ValueError(translated_message("api.error.invalid_payload", "Invalid request data."))
-
-    scenario = scenario_override or str(data.get("scenario", "NORMAL")).upper()
-    if scenario not in {"LOW", "NORMAL", "HIGH", "PROMO"}:
-        raise ValueError("Scenario must be LOW, NORMAL, HIGH, or PROMO.")
-
-    return ProductData(
-        name=_parse_string_field(data, "name"),
-        category=_parse_string_field(data, "category"),
-        unit_cost=_parse_numeric_field(data, "unit_cost"),
-        fixed_cost=_parse_numeric_field(data, "fixed_cost"),
-        base_price=_parse_numeric_field(data, "base_price"),
-        competitor_price=_parse_numeric_field(data, "competitor_price"),
-        base_demand=_parse_numeric_field(data, "base_demand"),
-        inventory=_parse_numeric_field(data, "inventory"),
-        elasticity=_parse_numeric_field(data, "elasticity"),
-        marketing_budget=_parse_numeric_field(data, "marketing_budget"),
-        return_rate=_parse_numeric_field(data, "return_rate"),
-        desired_margin=_parse_numeric_field(data, "desired_margin"),
-        scenario=scenario,
-    )
-
-
-def build_reference_product():
-    return parse_product(DEFAULT_PRODUCT)
-
-
 def render_portfolio_workspace(form_values=None, edit_product_id=None, error_message=None, status=200):
     portfolio_products = _sort_portfolio_products(load_portfolio(get_portfolio_file()))
     comparison_rows = build_portfolio_comparison(portfolio_products) if portfolio_products else []
@@ -420,6 +481,7 @@ def render_portfolio_workspace(form_values=None, edit_product_id=None, error_mes
             form_values=_portfolio_form_values(form_values or editing_product),
             editing_product=editing_product,
             error_message=error_message,
+            categories=sorted(CATEGORY_PROFILES),
         ),
         status,
     )
@@ -454,6 +516,8 @@ def analyze_page():
         page_name="analyze",
         default_values=default_values,
         selected_portfolio_product=selected_portfolio_product,
+        categories=sorted(CATEGORY_PROFILES),
+        dataset_products=load_business_dataset().products,
     )
 
 
@@ -473,32 +537,14 @@ def portfolio_save():
 
         if product_id:
             update_portfolio_product(get_portfolio_file(), product_id, payload)
-            flash(
-                translated_message(
-                    "portfolio.messages.updated",
-                    "Product updated in the portfolio.",
-                ),
-                "success",
-            )
+            flash(translated_message("portfolio.messages.updated", "Product updated in the portfolio."), "success")
         else:
             add_portfolio_product(get_portfolio_file(), payload)
-            flash(
-                translated_message(
-                    "portfolio.messages.added",
-                    "Product added to the portfolio.",
-                ),
-                "success",
-            )
+            flash(translated_message("portfolio.messages.added", "Product added to the portfolio."), "success")
 
         return redirect(localized_url("portfolio_page"))
     except KeyError:
-        flash(
-            translated_message(
-                "portfolio.messages.not_found",
-                "The selected product could not be found.",
-            ),
-            "danger",
-        )
+        flash(translated_message("portfolio.messages.not_found", "The selected product could not be found."), "danger")
         return redirect(localized_url("portfolio_page"))
     except ValueError as exc:
         app.logger.info("Validation error on /portfolio/save: %s", exc)
@@ -514,11 +560,7 @@ def portfolio_save():
 def portfolio_delete(product_id):
     deleted = delete_portfolio_product(get_portfolio_file(), product_id)
     message_key = "portfolio.messages.deleted" if deleted else "portfolio.messages.not_found"
-    fallback = (
-        "Product deleted from the portfolio."
-        if deleted
-        else "The selected product could not be found."
-    )
+    fallback = "Product deleted from the portfolio." if deleted else "The selected product could not be found."
     flash(translated_message(message_key, fallback), "success" if deleted else "danger")
     return redirect(localized_url("portfolio_page"))
 

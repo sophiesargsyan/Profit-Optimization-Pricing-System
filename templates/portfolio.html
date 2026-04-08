@@ -3,10 +3,6 @@
 {% block title %}{{ t["brand.name"] }} | {{ t["title.portfolio"] }}{% endblock %}
 
 {% block content %}
-{% set best_profit_row = comparison_rows|sort(attribute='expected_profit', reverse=true)|first if comparison_rows else None %}
-{% set best_margin_row = comparison_rows|sort(attribute='margin', reverse=true)|first if comparison_rows else None %}
-{% set highest_risk_row = comparison_rows|sort(attribute='risk_score', reverse=true)|first if comparison_rows else None %}
-
 <section class="section-space">
     <div class="container">
         <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
@@ -39,6 +35,20 @@
         <div class="row g-3 mb-4">
             <div class="col-md-6 col-xl-3">
                 <div class="metric-card summary-card summary-card-primary">
+                    <span class="metric-label">{{ t["portfolio.summary.total_products"] }}</span>
+                    <div class="metric-value">{{ portfolio_summary.total_products }}</div>
+                    <p class="metric-note">{{ t["portfolio.summary.total_products_note"] }}</p>
+                </div>
+            </div>
+            <div class="col-md-6 col-xl-3">
+                <div class="metric-card summary-card">
+                    <span class="metric-label">{{ t["portfolio.summary.projected_revenue"] }}</span>
+                    <div class="metric-value">${{ portfolio_summary.projected_revenue }}</div>
+                    <p class="metric-note">{{ t["portfolio.summary.projected_revenue_note"] }}</p>
+                </div>
+            </div>
+            <div class="col-md-6 col-xl-3">
+                <div class="metric-card summary-card">
                     <span class="metric-label">{{ t["portfolio.summary.projected_profit"] }}</span>
                     <div class="metric-value">${{ portfolio_summary.projected_profit }}</div>
                     <p class="metric-note">{{ t["portfolio.summary.projected_profit_note"] }}</p>
@@ -46,41 +56,9 @@
             </div>
             <div class="col-md-6 col-xl-3">
                 <div class="metric-card summary-card">
-                    <span class="metric-label">{{ t["portfolio.summary.best_product"] }}</span>
-                    <div class="metric-value">{{ best_profit_row.product_name if best_profit_row else t["common.not_available"] }}</div>
-                    <p class="metric-note">
-                        {% if best_profit_row %}
-                        {{ t["table.expected_profit"] }}: ${{ best_profit_row.expected_profit }}
-                        {% else %}
-                        {{ t["portfolio.summary.best_product_note"] }}
-                        {% endif %}
-                    </p>
-                </div>
-            </div>
-            <div class="col-md-6 col-xl-3">
-                <div class="metric-card summary-card">
-                    <span class="metric-label">{{ t["portfolio.summary.highest_margin"] }}</span>
-                    <div class="metric-value">{{ (best_margin_row.margin ~ '%') if best_margin_row else t["common.not_available"] }}</div>
-                    <p class="metric-note">
-                        {% if best_margin_row %}
-                        {{ best_margin_row.product_name }}
-                        {% else %}
-                        {{ t["portfolio.summary.highest_margin_note"] }}
-                        {% endif %}
-                    </p>
-                </div>
-            </div>
-            <div class="col-md-6 col-xl-3">
-                <div class="metric-card summary-card">
-                    <span class="metric-label">{{ t["portfolio.summary.highest_risk"] }}</span>
-                    <div class="metric-value">{{ t["risk." ~ highest_risk_row.risk_level] if highest_risk_row else t["common.not_available"] }}</div>
-                    <p class="metric-note">
-                        {% if highest_risk_row %}
-                        {{ highest_risk_row.product_name }}
-                        {% else %}
-                        {{ t["portfolio.summary.highest_risk_note"] }}
-                        {% endif %}
-                    </p>
+                    <span class="metric-label">{{ t["portfolio.summary.high_confidence"] }}</span>
+                    <div class="metric-value">{{ portfolio_summary.high_confidence_products }}</div>
+                    <p class="metric-note">{{ t["portfolio.summary.high_confidence_note"] }}</p>
                 </div>
             </div>
         </div>
@@ -104,62 +82,30 @@
                         <div class="col-12">
                             <label class="form-label" for="name">{{ t["form.product_name"] }}</label>
                             <input class="form-control" type="text" id="name" name="name" value="{{ form_values.name or '' }}" required>
-                            <div class="form-helper">{{ t["form_hint.product_name"] }}</div>
                         </div>
                         <div class="col-12">
                             <label class="form-label" for="category">{{ t["form.category"] }}</label>
-                            <input class="form-control" type="text" id="category" name="category" value="{{ form_values.category or '' }}" required>
-                            <div class="form-helper">{{ t["form_hint.category"] }}</div>
+                            <select class="form-select" id="category" name="category" required>
+                                {% for category in categories %}
+                                <option value="{{ category }}" {% if form_values.category == category %}selected{% endif %}>{{ category }}</option>
+                                {% endfor %}
+                            </select>
                         </div>
                         <div class="col-sm-6">
                             <label class="form-label" for="unit_cost">{{ t["form.unit_cost"] }}</label>
                             <input class="form-control" type="number" id="unit_cost" name="unit_cost" value="{{ form_values.unit_cost or '' }}" min="0" step="0.01" required>
-                            <div class="form-helper">{{ t["form_hint.unit_cost"] }}</div>
                         </div>
                         <div class="col-sm-6">
-                            <label class="form-label" for="fixed_cost">{{ t["form.fixed_cost"] }}</label>
-                            <input class="form-control" type="number" id="fixed_cost" name="fixed_cost" value="{{ form_values.fixed_cost or '' }}" min="0" step="0.01" required>
-                            <div class="form-helper">{{ t["form_hint.fixed_cost"] }}</div>
+                            <label class="form-label" for="current_price">{{ t["form.current_price"] }}</label>
+                            <input class="form-control" type="number" id="current_price" name="current_price" value="{{ form_values.current_price or '' }}" min="0.01" step="0.01" required>
                         </div>
                         <div class="col-sm-6">
-                            <label class="form-label" for="base_price">{{ t["form.base_price"] }}</label>
-                            <input class="form-control" type="number" id="base_price" name="base_price" value="{{ form_values.base_price or '' }}" min="0.01" step="0.01" required>
-                            <div class="form-helper">{{ t["form_hint.base_price"] }}</div>
+                            <label class="form-label" for="units_sold_30d">{{ t["form.units_sold_30d"] }}</label>
+                            <input class="form-control" type="number" id="units_sold_30d" name="units_sold_30d" value="{{ form_values.units_sold_30d or '' }}" min="1" step="1" required>
                         </div>
                         <div class="col-sm-6">
                             <label class="form-label" for="competitor_price">{{ t["form.competitor_price"] }}</label>
-                            <input class="form-control" type="number" id="competitor_price" name="competitor_price" value="{{ form_values.competitor_price or '' }}" min="0.01" step="0.01" required>
-                            <div class="form-helper">{{ t["form_hint.competitor_price"] }}</div>
-                        </div>
-                        <div class="col-sm-6">
-                            <label class="form-label" for="base_demand">{{ t["form.base_demand"] }}</label>
-                            <input class="form-control" type="number" id="base_demand" name="base_demand" value="{{ form_values.base_demand or '' }}" min="1" step="1" required>
-                            <div class="form-helper">{{ t["form_hint.base_demand"] }}</div>
-                        </div>
-                        <div class="col-sm-6">
-                            <label class="form-label" for="inventory">{{ t["form.inventory"] }}</label>
-                            <input class="form-control" type="number" id="inventory" name="inventory" value="{{ form_values.inventory or '' }}" min="1" step="1" required>
-                            <div class="form-helper">{{ t["form_hint.inventory"] }}</div>
-                        </div>
-                        <div class="col-sm-6">
-                            <label class="form-label" for="elasticity">{{ t["form.elasticity"] }}</label>
-                            <input class="form-control" type="number" id="elasticity" name="elasticity" value="{{ form_values.elasticity or '' }}" step="0.01" required>
-                            <div class="form-helper">{{ t["form_hint.elasticity"] }}</div>
-                        </div>
-                        <div class="col-sm-6">
-                            <label class="form-label" for="marketing_budget">{{ t["form.marketing_budget"] }}</label>
-                            <input class="form-control" type="number" id="marketing_budget" name="marketing_budget" value="{{ form_values.marketing_budget or '' }}" min="0" step="0.01" required>
-                            <div class="form-helper">{{ t["form_hint.marketing_budget"] }}</div>
-                        </div>
-                        <div class="col-sm-6">
-                            <label class="form-label" for="return_rate">{{ t["form.return_rate"] }}</label>
-                            <input class="form-control" type="number" id="return_rate" name="return_rate" value="{{ form_values.return_rate or '' }}" min="0" max="0.49" step="0.01" required>
-                            <div class="form-helper">{{ t["form_hint.return_rate"] }}</div>
-                        </div>
-                        <div class="col-sm-6">
-                            <label class="form-label" for="desired_margin">{{ t["form.desired_margin"] }}</label>
-                            <input class="form-control" type="number" id="desired_margin" name="desired_margin" value="{{ form_values.desired_margin or '' }}" min="1" max="89" step="0.1" required>
-                            <div class="form-helper">{{ t["form_hint.desired_margin"] }}</div>
+                            <input class="form-control" type="number" id="competitor_price" name="competitor_price" value="{{ form_values.competitor_price or '' }}" min="0.01" step="0.01">
                         </div>
                         <div class="col-12">
                             <label class="form-label" for="scenario">{{ t["form.scenario"] }}</label>
@@ -169,7 +115,38 @@
                                 <option value="HIGH" {% if form_values.scenario == "HIGH" %}selected{% endif %}>{{ t["scenario.HIGH"] }}</option>
                                 <option value="PROMO" {% if form_values.scenario == "PROMO" %}selected{% endif %}>{{ t["scenario.PROMO"] }}</option>
                             </select>
-                            <div class="form-helper">{{ t["form_hint.scenario"] }}</div>
+                        </div>
+
+                        <div class="col-12">
+                            <details class="advanced-panel">
+                                <summary>{{ t["analyze.advanced_toggle"] }}</summary>
+                                <div class="row g-3 mt-1">
+                                    <div class="col-sm-6">
+                                        <label class="form-label" for="elasticity_override">{{ t["form.elasticity_override"] }}</label>
+                                        <input class="form-control" type="number" id="elasticity_override" name="elasticity_override" value="{{ form_values.elasticity_override or '' }}" step="0.01">
+                                    </div>
+                                    <div class="col-sm-6">
+                                        <label class="form-label" for="return_rate_override">{{ t["form.return_rate_override"] }}</label>
+                                        <input class="form-control" type="number" id="return_rate_override" name="return_rate_override" value="{{ form_values.return_rate_override or '' }}" min="0" max="45" step="0.1">
+                                    </div>
+                                    <div class="col-sm-6">
+                                        <label class="form-label" for="fixed_cost_allocation_override">{{ t["form.fixed_cost_allocation_override"] }}</label>
+                                        <input class="form-control" type="number" id="fixed_cost_allocation_override" name="fixed_cost_allocation_override" value="{{ form_values.fixed_cost_allocation_override or '' }}" min="0" step="0.01">
+                                    </div>
+                                    <div class="col-sm-6">
+                                        <label class="form-label" for="target_margin_override">{{ t["form.target_margin_override"] }}</label>
+                                        <input class="form-control" type="number" id="target_margin_override" name="target_margin_override" value="{{ form_values.target_margin_override or '' }}" min="10" max="80" step="0.1">
+                                    </div>
+                                    <div class="col-sm-6">
+                                        <label class="form-label" for="marketing_factor_override">{{ t["form.marketing_factor_override"] }}</label>
+                                        <input class="form-control" type="number" id="marketing_factor_override" name="marketing_factor_override" value="{{ form_values.marketing_factor_override or '' }}" min="0.7" max="1.5" step="0.01">
+                                    </div>
+                                    <div class="col-sm-6">
+                                        <label class="form-label" for="inventory_constraint_override">{{ t["form.inventory_constraint_override"] }}</label>
+                                        <input class="form-control" type="number" id="inventory_constraint_override" name="inventory_constraint_override" value="{{ form_values.inventory_constraint_override or '' }}" min="1" step="1">
+                                    </div>
+                                </div>
+                            </details>
                         </div>
 
                         <div class="col-12 d-grid gap-2">
@@ -202,7 +179,7 @@
                                     <th>{{ t["table.product"] }}</th>
                                     <th>{{ t["form.category"] }}</th>
                                     <th>{{ t["table.scenario"] }}</th>
-                                    <th>{{ t["table.base_price"] }}</th>
+                                    <th>{{ t["form.current_price"] }}</th>
                                     <th>{{ t["table.updated"] }}</th>
                                     <th>{{ t["table.actions"] }}</th>
                                 </tr>
@@ -213,7 +190,7 @@
                                     <td class="fw-semibold">{{ product.name }}</td>
                                     <td>{{ product.category }}</td>
                                     <td>{{ t["scenario." ~ product.scenario] }}</td>
-                                    <td>${{ product.base_price }}</td>
+                                    <td>${{ product.current_price }}</td>
                                     <td>{{ product.updated_at|replace('T', ' ') }}</td>
                                     <td>
                                         <div class="table-actions">
@@ -256,8 +233,8 @@
                                     <th>{{ t["table.expected_revenue"] }}</th>
                                     <th>{{ t["table.expected_profit"] }}</th>
                                     <th>{{ t["table.margin"] }}</th>
-                                    <th>{{ t["table.risk"] }}</th>
-                                    <th>{{ t["table.strategy"] }}</th>
+                                    <th>{{ t["table.confidence"] }}</th>
+                                    <th>{{ t["table.option"] }}</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -265,13 +242,13 @@
                                 <tr>
                                     <td class="fw-semibold">{{ row.product_name }}</td>
                                     <td>{{ t["scenario." ~ row.scenario] }}</td>
-                                    <td>${{ row.base_price }}</td>
+                                    <td>${{ row.current_price }}</td>
                                     <td>${{ row.recommended_price }}</td>
-                                    <td>{{ row.expected_demand }}</td>
+                                    <td>{{ row.projected_demand }}</td>
                                     <td>${{ row.expected_revenue }}</td>
                                     <td>${{ row.expected_profit }}</td>
                                     <td>{{ row.margin }}%</td>
-                                    <td><span class="risk-pill risk-{{ row.risk_level|lower }}">{{ t["risk." ~ row.risk_level] }}</span></td>
+                                    <td><span class="confidence-pill confidence-{{ row.confidence_level|lower }}">{{ t["confidence." ~ row.confidence_level] }}</span></td>
                                     <td>{{ t["strategy." ~ row.recommended_strategy] }}</td>
                                 </tr>
                                 {% endfor %}
@@ -300,22 +277,26 @@
                                     <th>{{ t["table.timestamp"] }}</th>
                                     <th>{{ t["table.product"] }}</th>
                                     <th>{{ t["table.scenario"] }}</th>
-                                    <th>{{ t["table.strategy"] }}</th>
                                     <th>{{ t["table.recommended_price"] }}</th>
                                     <th>{{ t["table.expected_profit"] }}</th>
-                                    <th>{{ t["table.risk"] }}</th>
+                                    <th>{{ t["table.confidence"] }}</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {% for entry in history_entries %}
                                 <tr>
                                     <td>{{ entry.timestamp|replace('T', ' ') }}</td>
-                                    <td class="fw-semibold">{{ entry.product_name }}</td>
+                                    <td>{{ entry.product_name }}</td>
                                     <td>{{ t["scenario." ~ entry.selected_scenario] }}</td>
-                                    <td>{{ t["strategy." ~ entry.recommended_strategy] }}</td>
                                     <td>${{ entry.recommended_price }}</td>
                                     <td>${{ entry.expected_profit }}</td>
-                                    <td><span class="risk-pill risk-{{ entry.risk_level|lower }}">{{ t["risk." ~ entry.risk_level] }}</span></td>
+                                    <td>
+                                        {% if entry.confidence_level %}
+                                        <span class="confidence-pill confidence-{{ entry.confidence_level|lower }}">{{ t["confidence." ~ entry.confidence_level] }}</span>
+                                        {% else %}
+                                        {{ t["common.not_available"] }}
+                                        {% endif %}
+                                    </td>
                                 </tr>
                                 {% endfor %}
                             </tbody>
