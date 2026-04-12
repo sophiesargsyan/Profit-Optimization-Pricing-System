@@ -726,6 +726,7 @@ def _evaluate_price(product, dataset, assumptions, context, price, strategy_name
         "payment_fees": _round(payment_fees),
         "returns_cost": _round(returns_cost),
         "variable_cost": _round(variable_cost),
+        "total_cost": _round(total_cost),
         "target_margin": _round(target_margin * 100, 2),
         "risk_score": risk_score,
         "risk_level": risk_level,

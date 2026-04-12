@@ -150,6 +150,29 @@ body {
     align-items: center;
 }
 
+.action-group .btn,
+.table-actions .btn {
+    white-space: nowrap;
+}
+
+.section-header {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 0.85rem 1rem;
+}
+
+.section-header-compact {
+    margin-bottom: 1rem;
+}
+
+.section-header .text-muted,
+.section-header .text-muted.small,
+.section-header p {
+    max-width: 52rem;
+}
+
 .feature-card,
 .app-card,
 .metric-card,
@@ -238,6 +261,7 @@ body {
 .metric-value {
     line-height: 1.1;
     letter-spacing: -0.04em;
+    font-variant-numeric: tabular-nums;
 }
 
 .metric-label {
@@ -325,10 +349,30 @@ body {
     letter-spacing: -0.04em;
 }
 
+.highlight-metric .metric-value-compact {
+    font-size: 1rem;
+    line-height: 1.35;
+    letter-spacing: -0.02em;
+}
+
 .empty-state {
     color: var(--muted);
     min-height: 80px;
     padding: 0.2rem 0;
+}
+
+.empty-panel {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    min-height: 96px;
+    padding: 1.15rem 1.25rem;
+    border: 1px dashed var(--line);
+    border-radius: 18px;
+    background: var(--surface-soft);
+    color: var(--muted);
+    line-height: 1.6;
 }
 
 .form-helper {
@@ -362,6 +406,10 @@ body {
     padding: 1rem 0.75rem;
 }
 
+.comparison-table td {
+    vertical-align: middle;
+}
+
 .comparison-table tbody tr:last-child td {
     border-bottom: none;
 }
@@ -372,6 +420,19 @@ body {
 
 .strategy-row-best td {
     background: rgba(219, 228, 255, 0.28);
+}
+
+.table-number {
+    text-align: right;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+}
+
+.table-meta {
+    color: var(--muted);
+    font-size: 0.84rem;
+    line-height: 1.45;
+    margin-top: 0.15rem;
 }
 
 .rank-pill {
@@ -489,6 +550,10 @@ body {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 1rem;
+}
+
+.assumption-grid > .empty-panel {
+    grid-column: 1 / -1;
 }
 
 .assumption-card {

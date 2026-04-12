@@ -127,7 +127,7 @@
             </div>
 
             <div class="col-lg-8">
-                <div class="d-flex flex-wrap gap-2 align-items-center justify-content-between mb-3">
+                <div class="section-header mb-3">
                     <div>
                         <h2 class="section-title mb-1">{{ t["analyze.results_panel"] }}</h2>
                         <p class="text-muted mb-0">{{ t["analyze.results_subtitle"] }}</p>
@@ -139,38 +139,53 @@
                 </div>
 
                 <div id="bestStrategyHighlight" class="mb-4"></div>
-                <div id="analysisSummary" class="row g-3 mb-4"></div>
 
                 <div class="app-card mb-4">
-                    <div class="d-flex justify-content-between align-items-center mb-3">
+                    <div class="section-header section-header-compact">
+                        <h3 class="section-title mb-0">{{ t["analyze.financial_impact"] }}</h3>
+                        <span class="text-muted small">{{ t["analyze.financial_impact_caption"] }}</span>
+                    </div>
+                    <div id="financialImpactGrid" class="row g-3">
+                        <div class="col-12">
+                            <div class="empty-panel">{{ t["analyze.empty_financial_impact"] }}</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="app-card mb-4">
+                    <div class="section-header section-header-compact">
                         <h3 class="section-title mb-0">{{ t["analyze.recommendation"] }}</h3>
                         <div class="action-group">
                             <span id="scenarioLabel" class="soft-badge">{{ t["analyze.scenario_label_default"] }}</span>
                         </div>
                     </div>
-                    <div id="explanationBlock" class="empty-state">{{ t["analyze.empty_recommendation"] }}</div>
+                    <div id="explanationBlock">
+                        <div class="empty-panel">{{ t["analyze.empty_recommendation"] }}</div>
+                    </div>
                 </div>
 
                 <div class="app-card mb-4">
-                    <div class="d-flex justify-content-between align-items-center mb-3">
+                    <div class="section-header section-header-compact">
                         <h3 class="section-title mb-0">{{ t["analyze.assumptions_title"] }}</h3>
                         <span class="text-muted small">{{ t["analyze.assumptions_caption"] }}</span>
                     </div>
                     <div id="assumptionGrid" class="assumption-grid">
-                        <div class="empty-state">{{ t["analyze.empty_assumptions"] }}</div>
+                        <div class="empty-panel">{{ t["analyze.empty_assumptions"] }}</div>
                     </div>
                 </div>
 
                 <div class="app-card mb-4">
-                    <div class="d-flex justify-content-between align-items-center mb-3">
+                    <div class="section-header section-header-compact">
                         <h3 class="section-title mb-0">{{ t["analyze.why_recommended"] }}</h3>
                         <span class="text-muted small">{{ t["analyze.why_recommended_caption"] }}</span>
                     </div>
-                    <div id="whyRecommended" class="empty-state">{{ t["analyze.empty_recommendation_reason"] }}</div>
+                    <div id="whyRecommended">
+                        <div class="empty-panel">{{ t["analyze.empty_recommendation_reason"] }}</div>
+                    </div>
                 </div>
 
                 <div class="app-card mb-4">
-                    <div class="d-flex justify-content-between align-items-center mb-3">
+                    <div class="section-header section-header-compact">
                         <h3 class="section-title mb-0">{{ t["analyze.strategy_comparison"] }}</h3>
                         <span class="text-muted small">{{ t["analyze.strategy_comparison_caption"] }}</span>
                     </div>
@@ -180,11 +195,11 @@
                                 <tr>
                                     <th>{{ t["table.rank"] }}</th>
                                     <th>{{ t["table.option"] }}</th>
-                                    <th>{{ t["table.price"] }}</th>
-                                    <th>{{ t["table.expected_demand"] }}</th>
-                                    <th>{{ t["table.expected_revenue"] }}</th>
-                                    <th>{{ t["table.expected_profit"] }}</th>
-                                    <th>{{ t["table.margin"] }}</th>
+                                    <th class="table-number">{{ t["table.price"] }}</th>
+                                    <th class="table-number">{{ t["table.expected_demand"] }}</th>
+                                    <th class="table-number">{{ t["table.expected_revenue"] }}</th>
+                                    <th class="table-number">{{ t["table.expected_profit"] }}</th>
+                                    <th class="table-number">{{ t["table.margin"] }}</th>
                                     <th>{{ t["table.confidence"] }}</th>
                                 </tr>
                             </thead>
@@ -198,7 +213,7 @@
                 </div>
 
                 <div class="app-card mb-4">
-                    <div class="d-flex justify-content-between align-items-center mb-3">
+                    <div class="section-header section-header-compact">
                         <h3 class="section-title mb-0">{{ t["analyze.price_optimization_curve"] }}</h3>
                         <span class="text-muted small">{{ t["analyze.price_optimization_caption"] }}</span>
                     </div>
@@ -208,12 +223,16 @@
                 </div>
 
                 <div class="app-card" id="scenarioComparisonCard">
-                    <div class="d-flex justify-content-between align-items-center mb-3">
+                    <div class="section-header section-header-compact">
                         <h3 class="section-title mb-0">{{ t["analyze.scenario_comparison"] }}</h3>
                         <span id="winningScenario" class="soft-badge">{{ t["analyze.not_generated"] }}</span>
                     </div>
                     <p class="text-muted mb-3">{{ t["analyze.scenario_comparison_caption"] }}</p>
-                    <div id="scenarioSummary" class="row g-3 mb-3"></div>
+                    <div id="scenarioSummary" class="row g-3 mb-3">
+                        <div class="col-12">
+                            <div class="empty-panel">{{ t["analyze.empty_scenario_comparison"] }}</div>
+                        </div>
+                    </div>
                     <div class="chart-wrap">
                         <canvas id="scenarioChart"></canvas>
                     </div>

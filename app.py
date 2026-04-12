@@ -22,6 +22,13 @@ from flask import (
 from catalog_profiles import CATEGORY_PROFILES
 from data_repository import load_business_dataset
 from export_service import history_to_csv, history_to_json, portfolio_analysis_to_csv
+from financial_formatting import (
+    build_financial_format_config,
+    format_currency_value,
+    format_number_value,
+    format_percent_value,
+    format_signed_currency_value,
+)
 from history_storage import append_history_entry, load_history
 from portfolio_storage import (
     add_portfolio_product,
@@ -33,8 +40,10 @@ from portfolio_storage import (
 from pricing_engine import ProductData, compare_all_scenarios, run_full_analysis
 from product_defaults import DEFAULT_PRODUCT, EMPTY_PRODUCT
 from workspace_service import (
+    build_dashboard_snapshot,
     build_history_entry,
     build_portfolio_comparison,
+    product_record_to_data,
     summarize_portfolio,
 )
 
@@ -343,7 +352,7 @@ def build_reference_product():
 
 
 def _format_currency(value):
-    return f"${_round_value(value)}"
+    return format_currency_value(value, _currency_code())
 
 
 def _round_value(value, digits=2):
@@ -351,7 +360,149 @@ def _round_value(value, digits=2):
 
 
 def _format_percent(value):
-    return f"{_round_value(value, 2)}%"
+    return format_percent_value(value, 2)
+
+
+def _currency_code():
+    return load_business_dataset().business_settings.currency.upper()
+
+
+def format_currency_display(value, digits=2):
+    return format_currency_value(value, _currency_code(), digits)
+
+
+def format_percent_display(value, digits=1):
+    return format_percent_value(value, digits)
+
+
+def format_number_display(value, digits=0):
+    return format_number_value(value, digits)
+
+
+def _format_units(value):
+    return str(int(round(float(value))))
+
+
+def _format_multiplier(value):
+    return f"{_round_value(value, 2)}x"
+
+
+def _format_signed_currency(value):
+    return format_signed_currency_value(value, _currency_code())
+
+
+def _localized_assumption_source(translations, assumption):
+    return translations.get(f"assumption_source.{assumption['source']}", assumption["detail"])
+
+
+def _localized_competitor_position(translations, gap):
+    absolute_gap = _round_value(abs(gap), 1)
+    if gap > 0.5:
+        template = translations.get(
+            "position.below_competitor",
+            "{gap}% below competitor reference",
+        )
+        return template.format(gap=absolute_gap)
+    if gap < -0.5:
+        template = translations.get(
+            "position.above_competitor",
+            "{gap}% above competitor reference",
+        )
+        return template.format(gap=absolute_gap)
+    return translations.get("position.near_competitor", "Near competitor reference")
+
+
+def _build_localized_reasons(result, translations):
+    best = result["best_strategy"]
+    current_option = result.get("current_option")
+    assumptions = result["assumptions"]
+
+    reasons = [
+        translations.get(
+            "recommendation.reason.max_profit",
+            "This option produced the highest projected profit across {count} candidate prices.",
+        ).format(count=len(result.get("price_profit_curve", []))),
+        translations.get(
+            "recommendation.reason.margin_target",
+            "Projected margin is {margin} against a target of {target}.",
+        ).format(
+            margin=_format_percent(best["profit_margin"]),
+            target=_format_percent(best["target_margin"]),
+        ),
+        translations.get(
+            "recommendation.reason.market_position",
+            "Projected demand is {demand} units with the price positioned {position}.",
+        ).format(
+            demand=_format_units(best["demand"]),
+            position=_localized_competitor_position(translations, best["price_gap_vs_competitor"]),
+        ),
+    ]
+
+    if current_option:
+        reasons.append(
+            translations.get(
+                "recommendation.reason.profit_change",
+                "Projected profit changes by {change} versus staying at the current price.",
+            ).format(change=_format_signed_currency(best["profit"] - current_option["profit"]))
+        )
+    else:
+        reasons.append(
+            translations.get(
+                "recommendation.reason.confidence",
+                "Core assumptions range from {baseline} to {elasticity} confidence.",
+            ).format(
+                baseline=translate_dynamic(
+                    translations,
+                    "confidence",
+                    assumptions["baseline_demand"]["confidence_level"],
+                ),
+                elasticity=translate_dynamic(
+                    translations,
+                    "confidence",
+                    assumptions["elasticity"]["confidence_level"],
+                ),
+            )
+        )
+
+    return reasons
+
+
+def build_dashboard_assumption_cards(result, lang):
+    translations = get_translations(lang)
+    assumptions = result["assumptions"]
+    ordered_keys = (
+        "baseline_demand",
+        "seasonality",
+        "elasticity",
+        "return_rate",
+        "competitor_reference",
+        "fixed_cost_allocation",
+    )
+
+    cards = []
+    for key in ordered_keys:
+        assumption = assumptions[key]
+        if key == "baseline_demand":
+            value = f"{format_number_display(assumption['value'], 0)} {translations.get('dashboard.units', 'units')}"
+        elif key == "seasonality":
+            value = f"{_round_value(assumption['value'], 2)}x"
+        elif key == "return_rate":
+            value = format_percent_display(assumption["value"] * 100, 2)
+        elif key in {"competitor_reference", "fixed_cost_allocation"}:
+            value = format_currency_display(assumption["value"])
+        else:
+            value = format_number_display(assumption["value"], 2)
+
+        cards.append(
+            {
+                "label": translations.get(f"dashboard.assumption.{key}", key.replace("_", " ").title()),
+                "value": value,
+                "source": _localized_assumption_source(translations, assumption),
+                "confidence_level": assumption["confidence_level"],
+            }
+        )
+
+    return cards
 
 
 def build_localized_explanation(result, lang):
@@ -360,44 +511,46 @@ def build_localized_explanation(result, lang):
     product = result["product"]
     assumptions = result["assumptions"]
     confidence = result["overall_confidence"]
+    current_option = result.get("current_option")
     scenario_label = translate_dynamic(translations, "scenario", product["scenario"])
+    confidence_label = translate_dynamic(translations, "confidence", confidence["level"])
 
     assumption_cards = [
         {
             "label": translations.get("explanation.baseline", "Baseline demand"),
-            "value": f"{_round_value(assumptions['baseline_demand']['value'])} units / month",
-            "source": assumptions["baseline_demand"]["detail"],
-            "confidence": translate_dynamic(translations, "confidence", assumptions["baseline_demand"]["confidence_level"]),
+            "value": _format_units(assumptions["baseline_demand"]["value"]),
+            "source": _localized_assumption_source(translations, assumptions["baseline_demand"]),
+            "confidence": assumptions["baseline_demand"]["confidence_level"],
         },
         {
             "label": translations.get("explanation.seasonality", "Seasonality"),
-            "value": f"{assumptions['seasonality']['value']}x for the current pricing cycle",
-            "source": assumptions["seasonality"]["detail"],
-            "confidence": translate_dynamic(translations, "confidence", assumptions["seasonality"]["confidence_level"]),
+            "value": _format_multiplier(assumptions["seasonality"]["value"]),
+            "source": _localized_assumption_source(translations, assumptions["seasonality"]),
+            "confidence": assumptions["seasonality"]["confidence_level"],
         },
         {
             "label": translations.get("explanation.elasticity", "Demand sensitivity"),
             "value": str(assumptions["elasticity"]["value"]),
-            "source": assumptions["elasticity"]["detail"],
-            "confidence": translate_dynamic(translations, "confidence", assumptions["elasticity"]["confidence_level"]),
+            "source": _localized_assumption_source(translations, assumptions["elasticity"]),
+            "confidence": assumptions["elasticity"]["confidence_level"],
         },
         {
             "label": translations.get("explanation.return_rate", "Return rate"),
             "value": _format_percent(assumptions["return_rate"]["value"] * 100),
-            "source": assumptions["return_rate"]["detail"],
-            "confidence": translate_dynamic(translations, "confidence", assumptions["return_rate"]["confidence_level"]),
+            "source": _localized_assumption_source(translations, assumptions["return_rate"]),
+            "confidence": assumptions["return_rate"]["confidence_level"],
         },
         {
             "label": translations.get("explanation.competitor", "Competitor reference"),
             "value": _format_currency(assumptions["competitor_reference"]["value"]),
-            "source": assumptions["competitor_reference"]["detail"],
-            "confidence": translate_dynamic(translations, "confidence", assumptions["competitor_reference"]["confidence_level"]),
+            "source": _localized_assumption_source(translations, assumptions["competitor_reference"]),
+            "confidence": assumptions["competitor_reference"]["confidence_level"],
         },
         {
             "label": translations.get("explanation.fixed_cost", "Fixed cost allocation"),
             "value": _format_currency(assumptions["fixed_cost_allocation"]["value"]),
-            "source": assumptions["fixed_cost_allocation"]["detail"],
-            "confidence": translate_dynamic(translations, "confidence", assumptions["fixed_cost_allocation"]["confidence_level"]),
+            "source": _localized_assumption_source(translations, assumptions["fixed_cost_allocation"]),
+            "confidence": assumptions["fixed_cost_allocation"]["confidence_level"],
         },
     ]
 
@@ -413,6 +566,58 @@ def build_localized_explanation(result, lang):
             "The recommendation is profitable, but it carries meaningful execution risk under the current assumptions.",
         )
 
+    details = [
+        f"{translations.get('explanation.detail.price', 'Recommended price')}: {_format_currency(best['price'])}",
+        translations.get(
+            "explanation.detail.financial",
+            "At this price, PricePilot projects {revenue} in revenue, {total_cost} in total cost, {profit} in profit, and {margin} margin.",
+        ).format(
+            revenue=_format_currency(best["revenue"]),
+            total_cost=_format_currency(best["total_cost"]),
+            profit=_format_currency(best["profit"]),
+            margin=_format_percent(best["profit_margin"]),
+        ),
+    ]
+
+    if current_option:
+        details.append(
+            translations.get(
+                "explanation.detail.profit_change",
+                "Projected profit changes by {change} versus the current price.",
+            ).format(change=_format_signed_currency(best["profit"] - current_option["profit"]))
+        )
+
+    source_line = translations.get("explanation.source_line", "{label} source: {source}")
+    details.extend(
+        [
+            source_line.format(
+                label=translations.get("explanation.baseline", "Baseline demand"),
+                source=_localized_assumption_source(translations, assumptions["baseline_demand"]),
+            ),
+            source_line.format(
+                label=translations.get("explanation.seasonality", "Seasonality"),
+                source=_localized_assumption_source(translations, assumptions["seasonality"]),
+            ),
+            source_line.format(
+                label=translations.get("explanation.elasticity", "Demand sensitivity"),
+                source=_localized_assumption_source(translations, assumptions["elasticity"]),
+            ),
+            source_line.format(
+                label=translations.get("explanation.return_rate", "Return rate"),
+                source=_localized_assumption_source(translations, assumptions["return_rate"]),
+            ),
+            source_line.format(
+                label=translations.get("explanation.competitor", "Competitor reference"),
+                source=_localized_assumption_source(translations, assumptions["competitor_reference"]),
+            ),
+            translations.get(
+                "explanation.confidence_line",
+                "Confidence level: {confidence}.",
+            ).format(confidence=confidence_label),
+            f"{translations.get('explanation.detail.scenario', 'Scenario')}: {scenario_label}",
+        ]
+    )
+
     return {
         "title": translations.get(
             "explanation.title",
@@ -422,19 +627,11 @@ def build_localized_explanation(result, lang):
             "explanation.summary",
             "PricePilot combined recent demand, historical pricing behavior, seasonality, and competitor context to produce this recommendation.",
         ),
-        "details": [
-            f"{translations.get('explanation.detail.price', 'Recommended price')}: {_format_currency(best['price'])}",
-            f"{translations.get('explanation.detail.demand', 'Projected demand')}: {_round_value(best['demand'])} units",
-            f"{translations.get('explanation.detail.revenue', 'Projected revenue')}: {_format_currency(best['revenue'])}",
-            f"{translations.get('explanation.detail.profit', 'Projected profit')}: {_format_currency(best['profit'])}",
-            f"{translations.get('explanation.detail.margin', 'Estimated margin')}: {_format_percent(best['profit_margin'])}",
-            f"{translations.get('explanation.detail.confidence', 'Confidence')}: {translate_dynamic(translations, 'confidence', confidence['level'])}",
-            f"{translations.get('explanation.detail.scenario', 'Scenario')}: {scenario_label}",
-        ],
+        "details": details,
         "caution": caution,
         "assumption_cards": assumption_cards,
-        "confidence_label": translate_dynamic(translations, "confidence", confidence["level"]),
-        "why_recommended": list(best.get("recommendation_reasons", [])),
+        "confidence_label": confidence_label,
+        "why_recommended": _build_localized_reasons(result, translations),
     }
 
 
@@ -459,6 +656,10 @@ def inject_i18n():
         "localized_url": localized_url,
         "switch_language_url": switch_language_url,
         "translate_dynamic": lambda prefix, value: translate_dynamic(g.translations, prefix, value),
+        "display_currency": format_currency_display,
+        "display_percent": format_percent_display,
+        "display_number": format_number_display,
+        "financial_format_config": build_financial_format_config(_currency_code()),
     }
 
 
@@ -587,14 +788,33 @@ def history_export_json():
 
 @app.route("/dashboard")
 def dashboard_page():
-    reference_product = build_reference_product()
-    reference_analysis = run_full_analysis(reference_product)
-    reference_scenarios = compare_all_scenarios(reference_product)
+    portfolio_products = _sort_portfolio_products(load_portfolio(get_portfolio_file()))
+    comparison_rows = build_portfolio_comparison(portfolio_products) if portfolio_products else []
+
+    focus_record = None
+    if comparison_rows:
+        focus_row = max(
+            comparison_rows,
+            key=lambda row: (row["expected_profit"], row["confidence_score"], row["margin"]),
+        )
+        focus_record = next(
+            (record for record in portfolio_products if record.get("id") == focus_row["product_id"]),
+            None,
+        )
+
+    focus_product = product_record_to_data(focus_record) if focus_record else build_reference_product()
+    focus_analysis = run_full_analysis(focus_product)
+    focus_scenarios = compare_all_scenarios(focus_product)
+    dashboard_snapshot = build_dashboard_snapshot(comparison_rows, focus_analysis, focus_scenarios)
+
     return render_template(
         "dashboard.html",
         page_name="dashboard",
-        reference_analysis=reference_analysis,
-        reference_scenarios=reference_scenarios,
+        dashboard_snapshot=dashboard_snapshot,
+        comparison_rows=comparison_rows,
+        focus_analysis=focus_analysis,
+        focus_scenarios=focus_scenarios,
+        dashboard_assumptions=build_dashboard_assumption_cards(focus_analysis, g.current_lang),
     )
 
 

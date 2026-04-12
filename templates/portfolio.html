@@ -3,6 +3,9 @@
 {% block title %}{{ t["brand.name"] }} | {{ t["title.portfolio"] }}{% endblock %}
 
 {% block content %}
+{% set best_product = portfolio_summary.best_performing_product %}
+{% set weakest_product = portfolio_summary.weakest_performing_product %}
+{% set highest_profit_product = portfolio_summary.highest_profit_product %}
 <section class="section-space">
     <div class="container">
         <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
@@ -32,26 +35,86 @@
         <div class="alert alert-danger mb-4" role="alert">{{ error_message }}</div>
         {% endif %}
 
+        <div class="section-header mb-3">
+            <div>
+                <h2 class="section-title mb-1">{{ t["portfolio.summary.title"] }}</h2>
+                <p class="text-muted mb-0">{{ t["portfolio.summary.subtitle"] }}</p>
+            </div>
+            <div class="action-group">
+                <span class="soft-badge">{{ t["portfolio.summary.total_products"] }}: {{ portfolio_summary.total_products }}</span>
+                <span class="soft-badge">{{ t["portfolio.summary.total_profit"] }}: {{ display_currency(portfolio_summary.total_profit) }}</span>
+            </div>
+        </div>
+
+        <div class="row g-3 mb-3">
+            <div class="col-md-6 col-xl-3">
+                <div class="metric-card summary-card">
+                    <span class="metric-label">{{ t["portfolio.summary.total_revenue"] }}</span>
+                    <div class="metric-value">{{ display_currency(portfolio_summary.total_revenue) }}</div>
+                    <p class="metric-note">{{ t["portfolio.summary.total_revenue_note"] }}</p>
+                </div>
+            </div>
+            <div class="col-md-6 col-xl-3">
+                <div class="metric-card summary-card">
+                    <span class="metric-label">{{ t["portfolio.summary.total_cost"] }}</span>
+                    <div class="metric-value">{{ display_currency(portfolio_summary.total_cost) }}</div>
+                    <p class="metric-note">{{ t["portfolio.summary.total_cost_note"] }}</p>
+                </div>
+            </div>
+            <div class="col-md-6 col-xl-3">
+                <div class="metric-card summary-card summary-card-primary">
+                    <span class="metric-label">{{ t["portfolio.summary.total_profit"] }}</span>
+                    <div class="metric-value">{{ display_currency(portfolio_summary.total_profit) }}</div>
+                    <p class="metric-note">{{ t["portfolio.summary.total_profit_note"] }}</p>
+                </div>
+            </div>
+            <div class="col-md-6 col-xl-3">
+                <div class="metric-card summary-card">
+                    <span class="metric-label">{{ t["portfolio.summary.average_margin"] }}</span>
+                    <div class="metric-value">{{ display_percent(portfolio_summary.average_margin) }}</div>
+                    <p class="metric-note">{{ t["portfolio.summary.average_margin_note"] }}</p>
+                </div>
+            </div>
+        </div>
+
         <div class="row g-3 mb-4">
             <div class="col-md-6 col-xl-3">
                 <div class="metric-card summary-card summary-card-primary">
-                    <span class="metric-label">{{ t["portfolio.summary.total_products"] }}</span>
-                    <div class="metric-value">{{ portfolio_summary.total_products }}</div>
-                    <p class="metric-note">{{ t["portfolio.summary.total_products_note"] }}</p>
+                    <span class="metric-label">{{ t["portfolio.summary.best_product"] }}</span>
+                    <div class="metric-value">{{ best_product.product_name if best_product else t["common.not_available"] }}</div>
+                    <p class="metric-note">
+                        {% if best_product %}
+                        {{ t["table.product_profit"] }}: {{ display_currency(best_product.product_profit) }} | {{ t["table.contribution_share"] }}: {{ display_percent(best_product.profit_contribution_share) }}
+                        {% else %}
+                        {{ t["portfolio.summary.empty_note"] }}
+                        {% endif %}
+                    </p>
                 </div>
             </div>
             <div class="col-md-6 col-xl-3">
                 <div class="metric-card summary-card">
-                    <span class="metric-label">{{ t["portfolio.summary.projected_revenue"] }}</span>
-                    <div class="metric-value">${{ portfolio_summary.projected_revenue }}</div>
-                    <p class="metric-note">{{ t["portfolio.summary.projected_revenue_note"] }}</p>
+                    <span class="metric-label">{{ t["portfolio.summary.weakest_product"] }}</span>
+                    <div class="metric-value">{{ weakest_product.product_name if weakest_product else t["common.not_available"] }}</div>
+                    <p class="metric-note">
+                        {% if weakest_product %}
+                        {{ t["table.product_profit"] }}: {{ display_currency(weakest_product.product_profit) }} | {{ t["table.contribution_share"] }}: {{ display_percent(weakest_product.profit_contribution_share) }}
+                        {% else %}
+                        {{ t["portfolio.summary.empty_note"] }}
+                        {% endif %}
+                    </p>
                 </div>
             </div>
             <div class="col-md-6 col-xl-3">
                 <div class="metric-card summary-card">
-                    <span class="metric-label">{{ t["portfolio.summary.projected_profit"] }}</span>
-                    <div class="metric-value">${{ portfolio_summary.projected_profit }}</div>
-                    <p class="metric-note">{{ t["portfolio.summary.projected_profit_note"] }}</p>
+                    <span class="metric-label">{{ t["portfolio.summary.highest_profit_product"] }}</span>
+                    <div class="metric-value">{{ highest_profit_product.product_name if highest_profit_product else t["common.not_available"] }}</div>
+                    <p class="metric-note">
+                        {% if highest_profit_product %}
+                        {{ t["table.product_profit"] }}: {{ display_currency(highest_profit_product.product_profit) }} | {{ t["table.contribution_share"] }}: {{ display_percent(highest_profit_product.profit_contribution_share) }}
+                        {% else %}
+                        {{ t["portfolio.summary.empty_note"] }}
+                        {% endif %}
+                    </p>
                 </div>
             </div>
             <div class="col-md-6 col-xl-3">
@@ -66,7 +129,7 @@
         <div class="row g-4 align-items-start">
             <div class="col-lg-4">
                 <div class="app-card sticky-panel">
-                    <div class="d-flex justify-content-between align-items-center mb-2">
+                    <div class="section-header section-header-compact">
                         <h2 class="section-title mb-0">
                             {% if editing_product %}{{ t["portfolio.form.title_edit"] }}{% else %}{{ t["portfolio.form.title_add"] }}{% endif %}
                         </h2>
@@ -163,7 +226,7 @@
 
             <div class="col-lg-8">
                 <div class="app-card mb-4">
-                    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+                    <div class="section-header mb-3">
                         <div>
                             <h2 class="section-title mb-1">{{ t["portfolio.list.title"] }}</h2>
                             <p class="text-muted mb-0">{{ t["portfolio.list.subtitle"] }}</p>
@@ -171,32 +234,41 @@
                         <span class="soft-badge">{{ portfolio_summary.total_products }} {{ t["portfolio.list.items"] }}</span>
                     </div>
 
-                    {% if portfolio_products %}
+                    {% if comparison_rows %}
                     <div class="table-responsive">
                         <table class="table align-middle comparison-table mb-0">
                             <thead>
                                 <tr>
                                     <th>{{ t["table.product"] }}</th>
-                                    <th>{{ t["form.category"] }}</th>
                                     <th>{{ t["table.scenario"] }}</th>
-                                    <th>{{ t["form.current_price"] }}</th>
+                                    <th class="table-number">{{ t["form.current_price"] }}</th>
+                                    <th class="table-number">{{ t["table.expected_profit"] }}</th>
+                                    <th class="table-number">{{ t["table.margin"] }}</th>
+                                    <th>{{ t["table.confidence"] }}</th>
+                                    <th>{{ t["table.data_strength"] }}</th>
                                     <th>{{ t["table.updated"] }}</th>
                                     <th>{{ t["table.actions"] }}</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                {% for product in portfolio_products %}
+                                {% for row in comparison_rows %}
                                 <tr>
-                                    <td class="fw-semibold">{{ product.name }}</td>
-                                    <td>{{ product.category }}</td>
-                                    <td>{{ t["scenario." ~ product.scenario] }}</td>
-                                    <td>${{ product.current_price }}</td>
-                                    <td>{{ product.updated_at|replace('T', ' ') }}</td>
+                                    <td>
+                                        <div class="fw-semibold">{{ row.product_name }}</div>
+                                        <div class="table-meta">{{ row.category }}</div>
+                                    </td>
+                                    <td>{{ t["scenario." ~ row.scenario] }}</td>
+                                    <td class="table-number">{{ display_currency(row.current_price) }}</td>
+                                    <td class="table-number">{{ display_currency(row.expected_profit) }}</td>
+                                    <td class="table-number">{{ display_percent(row.margin) }}</td>
+                                    <td><span class="confidence-pill confidence-{{ row.confidence_level|lower }}">{{ t["confidence." ~ row.confidence_level] }}</span></td>
+                                    <td><span class="soft-badge">{{ t["portfolio.data_strength." ~ row.match_level] }}</span></td>
+                                    <td>{{ row.updated_at|replace('T', ' ') }}</td>
                                     <td>
                                         <div class="table-actions">
-                                            <a href="{{ localized_url('analyze_page', product_id=product.id) }}" class="btn btn-sm btn-dark">{{ t["portfolio.actions.analyze"] }}</a>
-                                            <a href="{{ localized_url('portfolio_page', edit=product.id) }}" class="btn btn-sm btn-outline-secondary">{{ t["portfolio.actions.edit"] }}</a>
-                                            <form method="post" action="{{ localized_url('portfolio_delete', product_id=product.id) }}" onsubmit="return confirm('{{ t["portfolio.messages.delete_confirm"] }}')">
+                                            <a href="{{ localized_url('analyze_page', product_id=row.product_id) }}" class="btn btn-sm btn-dark">{{ t["portfolio.actions.analyze"] }}</a>
+                                            <a href="{{ localized_url('portfolio_page', edit=row.product_id) }}" class="btn btn-sm btn-outline-secondary">{{ t["portfolio.actions.edit"] }}</a>
+                                            <form method="post" action="{{ localized_url('portfolio_delete', product_id=row.product_id) }}" onsubmit="return confirm('{{ t["portfolio.messages.delete_confirm"] }}')">
                                                 <button type="submit" class="btn btn-sm btn-outline-danger">{{ t["portfolio.actions.delete"] }}</button>
                                             </form>
                                         </div>
@@ -212,7 +284,7 @@
                 </div>
 
                 <div class="app-card mb-4">
-                    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+                    <div class="section-header mb-3">
                         <div>
                             <h2 class="section-title mb-1">{{ t["portfolio.comparison.title"] }}</h2>
                             <p class="text-muted mb-0">{{ t["portfolio.comparison.subtitle"] }}</p>
@@ -226,29 +298,30 @@
                             <thead>
                                 <tr>
                                     <th>{{ t["table.product"] }}</th>
-                                    <th>{{ t["table.scenario"] }}</th>
-                                    <th>{{ t["table.base_price"] }}</th>
-                                    <th>{{ t["table.recommended_price"] }}</th>
-                                    <th>{{ t["table.expected_demand"] }}</th>
-                                    <th>{{ t["table.expected_revenue"] }}</th>
-                                    <th>{{ t["table.expected_profit"] }}</th>
-                                    <th>{{ t["table.margin"] }}</th>
-                                    <th>{{ t["table.confidence"] }}</th>
+                                    <th class="table-number">{{ t["table.base_price"] }}</th>
+                                    <th class="table-number">{{ t["table.recommended_price"] }}</th>
+                                    <th class="table-number">{{ t["table.expected_revenue"] }}</th>
+                                    <th class="table-number">{{ t["table.total_cost"] }}</th>
+                                    <th class="table-number">{{ t["table.product_profit"] }}</th>
+                                    <th class="table-number">{{ t["table.margin"] }}</th>
+                                    <th class="table-number">{{ t["table.contribution_share"] }}</th>
                                     <th>{{ t["table.option"] }}</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {% for row in comparison_rows %}
                                 <tr>
-                                    <td class="fw-semibold">{{ row.product_name }}</td>
-                                    <td>{{ t["scenario." ~ row.scenario] }}</td>
-                                    <td>${{ row.current_price }}</td>
-                                    <td>${{ row.recommended_price }}</td>
-                                    <td>{{ row.projected_demand }}</td>
-                                    <td>${{ row.expected_revenue }}</td>
-                                    <td>${{ row.expected_profit }}</td>
-                                    <td>{{ row.margin }}%</td>
-                                    <td><span class="confidence-pill confidence-{{ row.confidence_level|lower }}">{{ t["confidence." ~ row.confidence_level] }}</span></td>
+                                    <td>
+                                        <div class="fw-semibold">{{ row.product_name }}</div>
+                                        <div class="table-meta">{{ t["scenario." ~ row.scenario] }}</div>
+                                    </td>
+                                    <td class="table-number">{{ display_currency(row.current_price) }}</td>
+                                    <td class="table-number">{{ display_currency(row.recommended_price) }}</td>
+                                    <td class="table-number">{{ display_currency(row.portfolio_revenue) }}</td>
+                                    <td class="table-number">{{ display_currency(row.portfolio_cost) }}</td>
+                                    <td class="table-number">{{ display_currency(row.product_profit) }}</td>
+                                    <td class="table-number">{{ display_percent(row.portfolio_margin) }}</td>
+                                    <td class="table-number">{{ display_percent(row.profit_contribution_share) }}</td>
                                     <td>{{ t["strategy." ~ row.recommended_strategy] }}</td>
                                 </tr>
                                 {% endfor %}
@@ -261,7 +334,7 @@
                 </div>
 
                 <div class="app-card">
-                    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+                    <div class="section-header mb-3">
                         <div>
                             <h2 class="section-title mb-1">{{ t["portfolio.history.title"] }}</h2>
                             <p class="text-muted mb-0">{{ t["portfolio.history.subtitle"] }}</p>
@@ -277,8 +350,9 @@
                                     <th>{{ t["table.timestamp"] }}</th>
                                     <th>{{ t["table.product"] }}</th>
                                     <th>{{ t["table.scenario"] }}</th>
-                                    <th>{{ t["table.recommended_price"] }}</th>
-                                    <th>{{ t["table.expected_profit"] }}</th>
+                                    <th>{{ t["table.option"] }}</th>
+                                    <th class="table-number">{{ t["table.recommended_price"] }}</th>
+                                    <th class="table-number">{{ t["table.expected_profit"] }}</th>
                                     <th>{{ t["table.confidence"] }}</th>
                                 </tr>
                             </thead>
@@ -288,8 +362,9 @@
                                     <td>{{ entry.timestamp|replace('T', ' ') }}</td>
                                     <td>{{ entry.product_name }}</td>
                                     <td>{{ t["scenario." ~ entry.selected_scenario] }}</td>
-                                    <td>${{ entry.recommended_price }}</td>
-                                    <td>${{ entry.expected_profit }}</td>
+                                    <td>{{ t["strategy." ~ entry.recommended_strategy] }}</td>
+                                    <td class="table-number">{{ display_currency(entry.recommended_price) }}</td>
+                                    <td class="table-number">{{ display_currency(entry.expected_profit) }}</td>
                                     <td>
                                         {% if entry.confidence_level %}
                                         <span class="confidence-pill confidence-{{ entry.confidence_level|lower }}">{{ t["confidence." ~ entry.confidence_level] }}</span>

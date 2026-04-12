@@ -2,13 +2,16 @@ let priceProfitChart;
 let scenarioChart;
 
 const I18N = window.pricePilotI18n || {};
-const CURRENT_LANG = window.pricePilotLang || "en";
-const LOCALE_MAP = {
-    en: "en-US",
-    hy: "hy-AM",
-    ru: "ru-RU",
+const DEFAULT_FORMAT_CONFIG = {
+    currencyCode: "USD",
+    currencySymbol: "USD",
+    currencySpaceBetween: true,
+    emptyDisplay: "—",
+    defaultCurrencyDigits: 2,
+    defaultPercentDigits: 1,
 };
-const CURRENT_LOCALE = LOCALE_MAP[CURRENT_LANG] || "en-US";
+const FORMAT_CONFIG = window.pricePilotFormatting || DEFAULT_FORMAT_CONFIG;
+const NUMBER_LOCALE = "en-US";
 
 function tr(key, fallback = "") {
     return I18N[key] ?? fallback ?? key;
@@ -34,21 +37,54 @@ function createElement(tag, className, text) {
     return element;
 }
 
-function formatCurrency(value) {
-    const amount = Number(value ?? 0);
-    return new Intl.NumberFormat(CURRENT_LOCALE, {
-        style: "currency",
-        currency: "USD",
-        maximumFractionDigits: 2,
-    }).format(amount);
+function isEmptyValue(value) {
+    return value === null || value === undefined || value === "";
 }
 
 function formatNumber(value, digits = 2) {
-    const amount = Number(value ?? 0);
-    return amount.toLocaleString(CURRENT_LOCALE, {
-        minimumFractionDigits: 0,
+    if (isEmptyValue(value)) {
+        return FORMAT_CONFIG.emptyDisplay;
+    }
+
+    const amount = Number(value);
+    return new Intl.NumberFormat(NUMBER_LOCALE, {
+        minimumFractionDigits: digits,
         maximumFractionDigits: digits,
-    });
+    }).format(amount);
+}
+
+function formatPercent(value, digits = FORMAT_CONFIG.defaultPercentDigits ?? 1) {
+    if (isEmptyValue(value)) {
+        return FORMAT_CONFIG.emptyDisplay;
+    }
+    return `${formatNumber(value, digits)}%`;
+}
+
+function formatCurrency(value, digits = FORMAT_CONFIG.defaultCurrencyDigits ?? 2) {
+    if (isEmptyValue(value)) {
+        return FORMAT_CONFIG.emptyDisplay;
+    }
+
+    const amount = Number(value);
+    const absoluteAmount = formatNumber(Math.abs(amount), digits);
+    const symbol = FORMAT_CONFIG.currencySymbol || FORMAT_CONFIG.currencyCode || "USD";
+    const body = FORMAT_CONFIG.currencySpaceBetween ? `${symbol} ${absoluteAmount}` : `${symbol}${absoluteAmount}`;
+    return amount < 0 ? `-${body}` : body;
+}
+
+function formatSignedCurrency(value) {
+    if (isEmptyValue(value)) {
+        return FORMAT_CONFIG.emptyDisplay;
+    }
+
+    const amount = Number(value);
+    if (amount > 0) {
+        return `+${formatCurrency(amount)}`;
+    }
+    if (amount < 0) {
+        return `-${formatCurrency(Math.abs(amount))}`;
+    }
+    return formatCurrency(0);
 }
 
 function createConfidenceBadge(level) {
@@ -63,6 +99,22 @@ function strategyLabel(name) {
 
 function scenarioLabel(code) {
     return translateDynamic("scenario", code);
+}
+
+function riskLabel(level) {
+    return translateDynamic("risk", level || "Medium");
+}
+
+function formatCompetitorPosition(gap) {
+    const numericGap = Number(gap ?? 0);
+    const absoluteGap = formatNumber(Math.abs(numericGap), 1);
+    if (numericGap > 0.5) {
+        return trf("position.below_competitor", { gap: absoluteGap }, "{gap}% below competitor reference");
+    }
+    if (numericGap < -0.5) {
+        return trf("position.above_competitor", { gap: absoluteGap }, "{gap}% above competitor reference");
+    }
+    return tr("position.near_competitor", "Near competitor reference");
 }
 
 async function postJson(url, payload) {
@@ -139,48 +191,70 @@ function renderBestStrategyHighlight(data) {
         "highlight-card-subtitle",
         trf("js.highlight_summary", {
             strategy: strategyLabel(best.strategy),
-            demand: formatNumber(best.demand, 0),
-            profit: formatCurrency(best.profit),
+            scenario: scenarioLabel(data.product.scenario),
         })
     );
 
     const metrics = createElement("div", "highlight-metrics");
-    const revenueMetric = createElement("div", "highlight-metric");
-    revenueMetric.append(
-        createElement("span", "metric-label", tr("table.expected_revenue")),
-        createElement("div", "metric-value", formatCurrency(best.revenue))
+    const demandMetric = createElement("div", "highlight-metric");
+    demandMetric.append(
+        createElement("span", "metric-label", tr("table.expected_demand")),
+        createElement("div", "metric-value", formatNumber(best.demand, 0))
     );
-    const profitMetric = createElement("div", "highlight-metric");
-    profitMetric.append(
-        createElement("span", "metric-label", tr("table.expected_profit")),
-        createElement("div", "metric-value", formatCurrency(best.profit))
+    const marketMetric = createElement("div", "highlight-metric");
+    marketMetric.append(
+        createElement("span", "metric-label", tr("js.market_position")),
+        createElement("div", "metric-value metric-value-compact", formatCompetitorPosition(best.price_gap_vs_competitor))
     );
-    const marginMetric = createElement("div", "highlight-metric");
-    marginMetric.append(
-        createElement("span", "metric-label", tr("table.margin")),
-        createElement("div", "metric-value", `${formatNumber(best.profit_margin)}%`)
+    const riskMetric = createElement("div", "highlight-metric");
+    riskMetric.append(
+        createElement("span", "metric-label", tr("js.risk_level")),
+        createElement("div", "metric-value", riskLabel(best.risk_level))
     );
-    metrics.append(revenueMetric, profitMetric, marginMetric);
+    metrics.append(demandMetric, marketMetric, riskMetric);
 
     card.append(header, title, subtitle, metrics);
     container.appendChild(card);
 }
 
-function renderSummaryCards(data) {
-    const container = document.getElementById("analysisSummary");
+function renderFinancialImpact(data) {
+    const container = document.getElementById("financialImpactGrid");
     if (!container) {
         return;
     }
 
     container.replaceChildren();
     const best = data.best_strategy;
+    const currentProfit = Number(data.current_option?.profit ?? NaN);
+    const profitChange = Number.isNaN(currentProfit) ? null : best.profit - currentProfit;
     const cards = [
-        { label: tr("js.recommended_price"), value: formatCurrency(best.price), note: strategyLabel(best.strategy), emphasis: true },
-        { label: tr("table.expected_demand"), value: formatNumber(best.demand, 0), note: tr("js.units_note", "Projected units") },
-        { label: tr("table.expected_revenue"), value: formatCurrency(best.revenue), note: tr("js.revenue_note", "Projected monthly revenue") },
-        { label: tr("table.expected_profit"), value: formatCurrency(best.profit), note: tr("js.profit_note_short", "Projected monthly profit") },
-        { label: tr("table.margin"), value: `${formatNumber(best.profit_margin)}%`, note: trf("js.target_margin_note", { margin: `${formatNumber(best.target_margin)}%` }) },
-        { label: tr("table.confidence"), value: translateDynamic("confidence", data.overall_confidence.level), note: trf("js.confidence_note", { score: formatNumber(data.overall_confidence.score) }) },
+        {
+            label: tr("table.expected_revenue"),
+            value: formatCurrency(best.revenue),
+            note: tr("js.revenue_note", "Projected monthly revenue"),
+        },
+        {
+            label: tr("table.total_cost", tr("js.total_cost", "Projected total cost")),
+            value: formatCurrency(best.total_cost),
+            note: tr("js.total_cost_note", "Includes unit cost, returns, fees, shipping, and fixed cost allocation"),
+        },
+        {
+            label: tr("table.expected_profit"),
+            value: formatCurrency(best.profit),
+            note: tr("js.profit_note_short", "Projected monthly profit"),
+            emphasis: true,
+        },
+        {
+            label: tr("table.margin"),
+            value: formatPercent(best.profit_margin),
+            note: tr("js.margin_note_short", "Profit as a share of projected revenue"),
+        },
+        {
+            label: tr("js.profit_change"),
+            value: profitChange === null ? tr("js.profit_change_pending", "Pending") : formatSignedCurrency(profitChange),
+            note: tr("js.profit_change_note", "Change versus the current price"),
+            tone: profitChange > 0 ? "text-success" : profitChange < 0 ? "text-danger" : "",
+        },
     ];
 
     cards.forEach((card) => {
@@ -189,10 +263,11 @@ function renderSummaryCards(data) {
             "div",
             `metric-card summary-card${card.emphasis ? " summary-card-primary" : ""}`
         );
+        const note = createElement("p", `metric-note${card.tone ? ` ${card.tone}` : ""}`, card.note);
         wrapper.append(
             createElement("span", "metric-label", card.label),
             createElement("div", "metric-value", card.value),
-            createElement("p", "metric-note", card.note)
+            note
         );
         col.appendChild(wrapper);
         container.appendChild(col);
@@ -211,10 +286,7 @@ function renderExplanation(data) {
         scenario: scenarioLabel(data.product.scenario),
     });
 
-    block.append(
-        createElement("h4", "mb-2", data.explanation.title),
-        createElement("p", "text-muted mb-3", data.explanation.summary)
-    );
+    block.append(createElement("p", "text-muted mb-3", data.explanation.summary));
 
     const detailList = createElement("ul", "explanation-list mb-0");
     data.explanation.details.forEach((detail) => {
@@ -236,7 +308,7 @@ function renderAssumptions(data) {
     container.replaceChildren();
     const cards = data.explanation.assumption_cards || [];
     if (cards.length === 0) {
-        container.appendChild(createElement("div", "empty-state", tr("analyze.empty_assumptions")));
+        container.appendChild(createElement("div", "empty-panel", tr("analyze.empty_assumptions")));
         return;
     }
 
@@ -261,7 +333,7 @@ function renderWhyRecommended(data) {
     container.replaceChildren();
     const reasons = data.explanation.why_recommended || [];
     if (reasons.length === 0) {
-        container.textContent = tr("analyze.empty_recommendation_reason");
+        container.appendChild(createElement("div", "empty-panel", tr("analyze.empty_recommendation_reason")));
         return;
     }
 
@@ -285,11 +357,11 @@ function renderStrategyTable(strategies) {
         rankCell.appendChild(createElement("span", "rank-pill", `#${strategy.rank}`));
 
         const optionCell = createElement("td", "fw-semibold", strategyLabel(strategy.strategy));
-        const priceCell = createElement("td", null, formatCurrency(strategy.price));
-        const demandCell = createElement("td", null, formatNumber(strategy.demand, 0));
-        const revenueCell = createElement("td", null, formatCurrency(strategy.revenue));
-        const profitCell = createElement("td", null, formatCurrency(strategy.profit));
-        const marginCell = createElement("td", null, `${formatNumber(strategy.profit_margin)}%`);
+        const priceCell = createElement("td", "table-number", formatCurrency(strategy.price));
+        const demandCell = createElement("td", "table-number", formatNumber(strategy.demand, 0));
+        const revenueCell = createElement("td", "table-number", formatCurrency(strategy.revenue));
+        const profitCell = createElement("td", "table-number", formatCurrency(strategy.profit));
+        const marginCell = createElement("td", "table-number", formatPercent(strategy.profit_margin));
         const confidenceCell = createElement("td");
         confidenceCell.appendChild(createConfidenceBadge(strategy.confidence_level));
 
@@ -449,7 +521,7 @@ async function runAnalysis(form, options = {}) {
             save_history: options.saveHistory !== false,
         });
         renderBestStrategyHighlight(data);
-        renderSummaryCards(data);
+        renderFinancialImpact(data);
         renderExplanation(data);
         renderAssumptions(data);
         renderWhyRecommended(data);
