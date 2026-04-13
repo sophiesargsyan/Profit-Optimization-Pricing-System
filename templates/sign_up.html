@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+
+{% block title %}{{ t["brand.name"] }} | {{ t["title.sign_up"] }}{% endblock %}
+
+{% block content %}
+<section class="section-space auth-page">
+    <div class="container">
+        <div class="row justify-content-center">
+            <div class="col-lg-6 col-xl-5">
+                <div class="page-heading text-center mb-4">
+                    <span class="eyebrow-pill">{{ t["auth.sign_up.eyebrow"] }}</span>
+                    <h1>{{ t["auth.sign_up.title"] }}</h1>
+                    <p>{{ t["auth.sign_up.subtitle"] }}</p>
+                </div>
+
+                <div class="app-card auth-card">
+                    {% with messages = get_flashed_messages(with_categories=true) %}
+                    {% if messages %}
+                    {% for category, message in messages %}
+                    <div class="alert alert-{{ 'success' if category == 'success' else 'danger' }} mb-3" role="alert">{{ message }}</div>
+                    {% endfor %}
+                    {% endif %}
+                    {% endwith %}
+
+                    {% if notice_message %}
+                    <div class="alert alert-info mb-4" role="alert">{{ notice_message }}</div>
+                    {% endif %}
+
+                    {% if error_message %}
+                    <div class="alert alert-danger mb-4" role="alert">{{ error_message }}</div>
+                    {% endif %}
+
+                    <form method="post" action="{{ auth_page_url('sign_up_page') }}" class="row g-3">
+                        <div class="col-12">
+                            <label class="form-label" for="name">{{ t["auth.sign_up.name"] }}</label>
+                            <input class="form-control" type="text" id="name" name="name" value="{{ form_values.get('name', '') }}" autocomplete="name" required>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label" for="email">{{ t["auth.sign_up.email"] }}</label>
+                            <input class="form-control" type="email" id="email" name="email" value="{{ form_values.get('email', '') }}" autocomplete="email" required>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label" for="password">{{ t["auth.sign_up.password"] }}</label>
+                            <input class="form-control" type="password" id="password" name="password" autocomplete="new-password" required>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label" for="confirm_password">{{ t["auth.sign_up.confirm_password"] }}</label>
+                            <input class="form-control" type="password" id="confirm_password" name="confirm_password" autocomplete="new-password" required>
+                        </div>
+                        <div class="col-12 d-grid">
+                            <button type="submit" class="btn btn-dark btn-lg">{{ t["auth.sign_up.submit"] }}</button>
+                        </div>
+                    </form>
+
+                    <p class="text-muted small mb-0 mt-4 text-center">
+                        {{ t["auth.sign_up.switch_label"] }}
+                        <a class="auth-switch-link" href="{{ auth_page_url('sign_in_page') }}">{{ t["auth.switch.sign_in"] }}</a>
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}

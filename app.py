@@ -4,7 +4,11 @@ import json
 import os
 import secrets
 from dataclasses import asdict
+from datetime import datetime
+from functools import wraps
 from pathlib import Path
+from urllib.parse import urljoin, urlparse
+from uuid import uuid4
 
 from flask import (
     Flask,
@@ -18,7 +22,9 @@ from flask import (
     session,
     url_for,
 )
+from werkzeug.security import check_password_hash, generate_password_hash
 
+from auth_storage import add_user, get_user_by_email, get_user_by_id
 from catalog_profiles import CATEGORY_PROFILES
 from data_repository import load_business_dataset
 from export_service import history_to_csv, history_to_json, portfolio_analysis_to_csv
@@ -65,6 +71,8 @@ TRANSLATIONS_DIR = BASE_DIR / "translations"
 
 app.config.setdefault("PORTFOLIO_FILE", DATA_DIR / "portfolio.json")
 app.config.setdefault("HISTORY_FILE", DATA_DIR / "history.json")
+app.config.setdefault("USERS_FILE", DATA_DIR / "users.json")
+PASSWORD_MIN_LENGTH = 8
 
 STRING_FIELDS = {
     "name": {"default": "Product", "label": "Product name", "max_length": 120},
@@ -211,6 +219,125 @@ def get_portfolio_file():
 
 def get_history_file():
     return Path(app.config["HISTORY_FILE"])
+
+
+def get_users_file():
+    return Path(app.config["USERS_FILE"])
+
+
+def _timestamp():
+    return datetime.now().isoformat(timespec="seconds")
+
+
+def _normalize_email(value):
+    return str(value or "").strip().lower()
+
+
+def _build_public_user(user):
+    if not user:
+        return None
+
+    return {
+        "id": user.get("id"),
+        "name": user.get("name", ""),
+        "email": user.get("email", ""),
+    }
+
+
+def _load_current_user():
+    user_id = session.get("user_id")
+    if not user_id:
+        return None
+
+    user = get_user_by_id(get_users_file(), user_id)
+    if user is None:
+        session.pop("user_id", None)
+        return None
+
+    return _build_public_user(user)
+
+
+def current_user():
+    return getattr(g, "current_user", None)
+
+
+def is_authenticated():
+    return current_user() is not None
+
+
+def protected_url(endpoint=None, **kwargs):
+    target = localized_url(endpoint, **kwargs)
+    if is_authenticated():
+        return target
+    return localized_url("sign_in_page", next=target)
+
+
+def _request_target():
+    query_string = request.query_string.decode("utf-8").strip()
+    return f"{request.path}?{query_string}" if query_string else request.path
+
+
+def _is_safe_redirect_target(target):
+    if not target:
+        return False
+
+    host_url = urlparse(request.host_url)
+    redirect_url = urlparse(urljoin(request.host_url, target))
+    return redirect_url.scheme in {"http", "https"} and host_url.netloc == redirect_url.netloc
+
+
+def auth_page_url(endpoint):
+    next_target = request.args.get("next", "").strip()
+    if next_target and _is_safe_redirect_target(next_target):
+        return localized_url(endpoint, next=next_target)
+    return localized_url(endpoint)
+
+
+def _redirect_target(default_endpoint="index"):
+    return localized_url(default_endpoint)
+
+
+def _login_user(user):
+    session["user_id"] = user["id"]
+
+
+def _logout_user():
+    session.pop("user_id", None)
+
+
+def redirect_authenticated_user(default_endpoint="index"):
+    if is_authenticated():
+        return redirect(localized_url(default_endpoint))
+    return None
+
+
+def _authentication_required_response():
+    message = translated_message("auth.error.login_required", "Sign in to access that page.")
+    sign_in_url = localized_url("sign_in_page", next=_request_target())
+    if request.path.startswith("/api/"):
+        return (
+            jsonify(
+                {
+                    "success": False,
+                    "data": {"redirect_url": sign_in_url},
+                    "error": message,
+                }
+            ),
+            401,
+        )
+
+    flash(message, "danger")
+    return redirect(sign_in_url)
+
+
+def login_required(view):
+    @wraps(view)
+    def wrapped_view(*args, **kwargs):
+        if not is_authenticated():
+            return _authentication_required_response()
+        return view(*args, **kwargs)
+
+    return wrapped_view
 
 
 def _boolean_input(value, default=True):
@@ -642,9 +769,10 @@ def localize_analysis_result(result, lang):
 
 
 @app.before_request
-def set_request_language():
+def set_request_context():
     g.current_lang = get_current_language()
     g.translations = get_translations(g.current_lang)
+    g.current_user = _load_current_user()
 
 
 @app.context_processor
@@ -660,6 +788,10 @@ def inject_i18n():
         "display_percent": format_percent_display,
         "display_number": format_number_display,
         "financial_format_config": build_financial_format_config(_currency_code()),
+        "current_user": current_user(),
+        "is_authenticated": is_authenticated(),
+        "protected_url": protected_url,
+        "auth_page_url": auth_page_url,
     }
 
 
@@ -688,6 +820,26 @@ def render_portfolio_workspace(form_values=None, edit_product_id=None, error_mes
     )
 
 
+def render_auth_page(
+    template_name,
+    page_name,
+    form_values=None,
+    notice_message=None,
+    error_message=None,
+    status=200,
+):
+    return (
+        render_template(
+            template_name,
+            page_name=page_name,
+            form_values=form_values or {},
+            notice_message=notice_message,
+            error_message=error_message,
+        ),
+        status,
+    )
+
+
 def download_response(content, filename, mimetype):
     return Response(
         content,
@@ -702,6 +854,7 @@ def index():
 
 
 @app.route("/analyze")
+@login_required
 def analyze_page():
     product_id = request.args.get("product_id", "").strip()
     selected_portfolio_product = (
@@ -722,13 +875,129 @@ def analyze_page():
     )
 
 
+@app.route("/sign-in", methods=["GET", "POST"])
+def sign_in_page():
+    redirect_response = redirect_authenticated_user()
+    if redirect_response is not None:
+        return redirect_response
+
+    form_values = {}
+    error_message = None
+
+    if request.method == "POST":
+        form_values = {"identifier": request.form.get("identifier", "").strip()}
+        password = request.form.get("password", "")
+        normalized_email = _normalize_email(form_values["identifier"])
+        user = get_user_by_email(get_users_file(), normalized_email)
+        stored_password_hash = user.get("password_hash", "") if user else ""
+
+        if user is None or not stored_password_hash or not check_password_hash(stored_password_hash, password):
+            error_message = translated_message(
+                "auth.error.invalid_credentials",
+                "Incorrect email or password.",
+            )
+            return render_auth_page(
+                "sign_in.html",
+                page_name="sign-in",
+                form_values=form_values,
+                error_message=error_message,
+                status=401,
+            )
+
+        _login_user(user)
+        return redirect(_redirect_target())
+
+    return render_auth_page(
+        "sign_in.html",
+        page_name="sign-in",
+        form_values=form_values,
+    )
+
+
+@app.route("/sign-up", methods=["GET", "POST"])
+def sign_up_page():
+    redirect_response = redirect_authenticated_user()
+    if redirect_response is not None:
+        return redirect_response
+
+    form_values = {}
+    error_message = None
+
+    if request.method == "POST":
+        form_values = {
+            "name": request.form.get("name", "").strip(),
+            "email": request.form.get("email", "").strip(),
+        }
+        password = request.form.get("password", "")
+        confirm_password = request.form.get("confirm_password", "")
+        normalized_email = _normalize_email(form_values["email"])
+
+        if not form_values["name"]:
+            error_message = translated_message("auth.error.name_required", "Name is required.")
+        elif len(form_values["name"]) > 120:
+            error_message = translated_message(
+                "auth.error.name_too_long",
+                "Name must be at most 120 characters.",
+            )
+        elif "@" not in normalized_email or "." not in normalized_email.split("@", 1)[-1]:
+            error_message = translated_message(
+                "auth.error.invalid_email",
+                "Enter a valid email address.",
+            )
+        elif get_user_by_email(get_users_file(), normalized_email):
+            error_message = translated_message(
+                "auth.error.email_taken",
+                "An account with this email already exists.",
+            )
+        elif len(password) < PASSWORD_MIN_LENGTH:
+            error_message = translated_message(
+                "auth.error.password_too_short",
+                f"Password must be at least {PASSWORD_MIN_LENGTH} characters.",
+            )
+        elif password != confirm_password:
+            error_message = translated_message(
+                "auth.error.password_mismatch",
+                "Passwords do not match.",
+            )
+
+        if error_message:
+            return render_auth_page(
+                "sign_up.html",
+                page_name="sign-up",
+                form_values=form_values,
+                error_message=error_message,
+                status=400,
+            )
+
+        user = add_user(
+            get_users_file(),
+            {
+                "id": uuid4().hex,
+                "name": form_values["name"],
+                "email": normalized_email,
+                "password_hash": generate_password_hash(password),
+                "created_at": _timestamp(),
+            },
+        )
+        _login_user(user)
+        return redirect(_redirect_target())
+
+    return render_auth_page(
+        "sign_up.html",
+        page_name="sign-up",
+        form_values=form_values,
+    )
+
+
 @app.route("/portfolio")
+@login_required
 def portfolio_page():
     edit_product_id = request.args.get("edit", "").strip() or None
     return render_portfolio_workspace(edit_product_id=edit_product_id)
 
 
 @app.route("/portfolio/save", methods=["POST"])
+@login_required
 def portfolio_save():
     product_id = request.form.get("product_id", "").strip() or None
 
@@ -758,6 +1027,7 @@ def portfolio_save():
 
 
 @app.route("/portfolio/<product_id>/delete", methods=["POST"])
+@login_required
 def portfolio_delete(product_id):
     deleted = delete_portfolio_product(get_portfolio_file(), product_id)
     message_key = "portfolio.messages.deleted" if deleted else "portfolio.messages.not_found"
@@ -767,6 +1037,7 @@ def portfolio_delete(product_id):
 
 
 @app.route("/portfolio/export.csv")
+@login_required
 def portfolio_export_csv():
     portfolio_products = _sort_portfolio_products(load_portfolio(get_portfolio_file()))
     comparison_rows = build_portfolio_comparison(portfolio_products) if portfolio_products else []
@@ -775,18 +1046,21 @@ def portfolio_export_csv():
 
 
 @app.route("/history/export.csv")
+@login_required
 def history_export_csv():
     csv_content = "\ufeff" + history_to_csv(load_history(get_history_file()))
     return download_response(csv_content, "pricepilot_analysis_history.csv", "text/csv; charset=utf-8")
 
 
 @app.route("/history/export.json")
+@login_required
 def history_export_json():
     json_content = history_to_json(load_history(get_history_file()))
     return download_response(json_content, "pricepilot_analysis_history.json", "application/json; charset=utf-8")
 
 
 @app.route("/dashboard")
+@login_required
 def dashboard_page():
     portfolio_products = _sort_portfolio_products(load_portfolio(get_portfolio_file()))
     comparison_rows = build_portfolio_comparison(portfolio_products) if portfolio_products else []
@@ -819,11 +1093,21 @@ def dashboard_page():
 
 
 @app.route("/about")
+@login_required
 def about_page():
     return render_template("about.html", page_name="about")
 
 
+@app.route("/sign-out", methods=["POST"])
+@login_required
+def sign_out():
+    _logout_user()
+    flash(translated_message("auth.message.signed_out", "You have been signed out."), "success")
+    return redirect(localized_url("sign_in_page"))
+
+
 @app.route("/api/analyze", methods=["POST"])
+@login_required
 def api_analyze():
     data = request.get_json(silent=True) or {}
 
@@ -850,6 +1134,7 @@ def api_analyze():
 
 
 @app.route("/api/scenario-compare", methods=["POST"])
+@login_required
 def api_scenario_compare():
     data = request.get_json(silent=True) or {}
 

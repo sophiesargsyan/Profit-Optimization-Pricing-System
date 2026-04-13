@@ -3,197 +3,72 @@
 {% block title %}{{ t["brand.name"] }} | {{ t["title.about"] }}{% endblock %}
 
 {% block content %}
-<section class="section-space about-page">
+<section class="section-space">
     <div class="container">
-        <div class="about-hero-card">
-            <div class="row align-items-center g-4 g-xl-5">
-                <div class="col-lg-7">
-                    <span class="eyebrow-pill about-hero-badge">{{ t["about.hero.badge"] }}</span>
-                    <h1 class="about-hero-title">{{ t["about.hero.title"] }}</h1>
-                    <p class="about-hero-subtitle">{{ t["about.hero.subtitle"] }}</p>
-                    <div class="hero-actions about-hero-actions">
-                        <a href="{{ localized_url('analyze_page') }}" class="btn btn-dark btn-lg px-4">{{ t["about.hero.primary_cta"] }}</a>
-                        <a href="{{ localized_url('dashboard_page') }}" class="btn btn-outline-secondary btn-lg px-4">{{ t["about.hero.secondary_cta"] }}</a>
-                    </div>
-                </div>
-
-                <div class="col-lg-5">
-                    <div class="about-hero-panel">
-                        <div class="about-panel-header">
-                            <span class="soft-badge about-panel-badge">{{ t["about.hero.panel.badge"] }}</span>
-                            <h2>{{ t["about.hero.panel.title"] }}</h2>
-                        </div>
-                        <div class="about-panel-grid">
-                            <div class="about-panel-item">
-                                <div class="about-card-icon">01</div>
-                                <h3>{{ t["about.hero.panel.item1.title"] }}</h3>
-                                <p>{{ t["about.hero.panel.item1.description"] }}</p>
-                            </div>
-                            <div class="about-panel-item">
-                                <div class="about-card-icon">02</div>
-                                <h3>{{ t["about.hero.panel.item2.title"] }}</h3>
-                                <p>{{ t["about.hero.panel.item2.description"] }}</p>
-                            </div>
-                            <div class="about-panel-item">
-                                <div class="about-card-icon">03</div>
-                                <h3>{{ t["about.hero.panel.item3.title"] }}</h3>
-                                <p>{{ t["about.hero.panel.item3.description"] }}</p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
+        <div class="page-heading page-heading-left mb-4">
+            <h1>{{ t["about.system.title"] }}</h1>
+            <p>{{ t["about.system.subtitle"] }}</p>
         </div>
 
-        <div class="about-section-block">
-            <div class="about-section-heading">
-                <span class="soft-badge">{{ t["about.overview.badge"] }}</span>
-                <h2>{{ t["about.overview.title"] }}</h2>
-                <p>{{ t["about.overview.subtitle"] }}</p>
-            </div>
-
-            <div class="row g-4 align-items-stretch">
-                <div class="col-lg-7">
-                    <div class="app-card about-story-card h-100">
-                        <p class="about-lead-text">{{ t["about.overview.body1"] }}</p>
-                        <p class="about-support-text mb-0">{{ t["about.overview.body2"] }}</p>
-                    </div>
-                </div>
-
-                <div class="col-lg-5">
-                    <div class="about-overview-stack">
-                        <div class="about-value-card">
-                            <div class="about-card-icon">01</div>
-                            <h3>{{ t["about.overview.card1.title"] }}</h3>
-                            <p>{{ t["about.overview.card1.description"] }}</p>
-                        </div>
-                        <div class="about-value-card">
-                            <div class="about-card-icon">02</div>
-                            <h3>{{ t["about.overview.card2.title"] }}</h3>
-                            <p>{{ t["about.overview.card2.description"] }}</p>
-                        </div>
-                        <div class="about-value-card">
-                            <div class="about-card-icon">03</div>
-                            <h3>{{ t["about.overview.card3.title"] }}</h3>
-                            <p>{{ t["about.overview.card3.description"] }}</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
+        <div class="app-card">
+            <p class="mb-3">{{ t["about.system.body1"] }}</p>
+            <p class="text-muted mb-0">{{ t["about.system.body2"] }}</p>
         </div>
 
-        <div class="about-section-block">
-            <div class="about-section-heading">
-                <span class="soft-badge">{{ t["about.capabilities.badge"] }}</span>
+        <section class="home-section">
+            <div class="section-intro">
                 <h2>{{ t["about.capabilities.title"] }}</h2>
                 <p>{{ t["about.capabilities.subtitle"] }}</p>
             </div>
 
             <div class="row g-4">
-                <div class="col-md-6 col-xl-4">
-                    <div class="about-feature-card">
-                        <div class="about-card-icon">01</div>
+                <div class="col-md-6 col-xl-3">
+                    <div class="feature-card capability-card h-100">
+                        <div class="feature-icon">01</div>
                         <h3>{{ t["about.capabilities.item1.title"] }}</h3>
                         <p>{{ t["about.capabilities.item1.description"] }}</p>
                     </div>
                 </div>
-                <div class="col-md-6 col-xl-4">
-                    <div class="about-feature-card">
-                        <div class="about-card-icon">02</div>
+                <div class="col-md-6 col-xl-3">
+                    <div class="feature-card capability-card h-100">
+                        <div class="feature-icon">02</div>
                         <h3>{{ t["about.capabilities.item2.title"] }}</h3>
                         <p>{{ t["about.capabilities.item2.description"] }}</p>
                     </div>
                 </div>
-                <div class="col-md-6 col-xl-4">
-                    <div class="about-feature-card">
-                        <div class="about-card-icon">03</div>
+                <div class="col-md-6 col-xl-3">
+                    <div class="feature-card capability-card h-100">
+                        <div class="feature-icon">03</div>
                         <h3>{{ t["about.capabilities.item3.title"] }}</h3>
                         <p>{{ t["about.capabilities.item3.description"] }}</p>
                     </div>
                 </div>
-                <div class="col-md-6 col-xl-4">
-                    <div class="about-feature-card">
-                        <div class="about-card-icon">04</div>
+                <div class="col-md-6 col-xl-3">
+                    <div class="feature-card capability-card h-100">
+                        <div class="feature-icon">04</div>
                         <h3>{{ t["about.capabilities.item4.title"] }}</h3>
                         <p>{{ t["about.capabilities.item4.description"] }}</p>
                     </div>
                 </div>
-                <div class="col-md-6 col-xl-4">
-                    <div class="about-feature-card">
-                        <div class="about-card-icon">05</div>
-                        <h3>{{ t["about.capabilities.item5.title"] }}</h3>
-                        <p>{{ t["about.capabilities.item5.description"] }}</p>
-                    </div>
-                </div>
-                <div class="col-md-6 col-xl-4">
-                    <div class="about-feature-card">
-                        <div class="about-card-icon">06</div>
-                        <h3>{{ t["about.capabilities.item6.title"] }}</h3>
-                        <p>{{ t["about.capabilities.item6.description"] }}</p>
-                    </div>
-                </div>
             </div>
-        </div>
+        </section>
 
-        <div class="about-section-block">
-            <div class="about-section-heading">
-                <span class="soft-badge">{{ t["about.help.badge"] }}</span>
-                <h2>{{ t["about.help.title"] }}</h2>
-                <p>{{ t["about.help.subtitle"] }}</p>
+        <section class="home-section">
+            <div class="section-intro">
+                <h2>{{ t["about.useful.title"] }}</h2>
+                <p>{{ t["about.useful.subtitle"] }}</p>
             </div>
 
-            <div class="row g-4 align-items-stretch">
-                <div class="col-lg-7">
-                    <div class="about-help-card h-100">
-                        <h3>{{ t["about.help.card.title"] }}</h3>
-                        <p>{{ t["about.help.card.paragraph1"] }}</p>
-                        <p class="mb-0">{{ t["about.help.card.paragraph2"] }}</p>
-
-                        <ul class="about-check-list">
-                            <li>{{ t["about.help.list.item1"] }}</li>
-                            <li>{{ t["about.help.list.item2"] }}</li>
-                            <li>{{ t["about.help.list.item3"] }}</li>
-                            <li>{{ t["about.help.list.item4"] }}</li>
-                        </ul>
-                    </div>
-                </div>
-
-                <div class="col-lg-5">
-                    <div class="about-help-stack">
-                        <div class="about-help-mini">
-                            <div class="about-card-icon">01</div>
-                            <h3>{{ t["about.help.point1.title"] }}</h3>
-                            <p>{{ t["about.help.point1.description"] }}</p>
-                        </div>
-                        <div class="about-help-mini">
-                            <div class="about-card-icon">02</div>
-                            <h3>{{ t["about.help.point2.title"] }}</h3>
-                            <p>{{ t["about.help.point2.description"] }}</p>
-                        </div>
-                        <div class="about-help-mini">
-                            <div class="about-card-icon">03</div>
-                            <h3>{{ t["about.help.point3.title"] }}</h3>
-                            <p>{{ t["about.help.point3.description"] }}</p>
-                        </div>
-                    </div>
-                </div>
+            <div class="app-card">
+                <p class="mb-3">{{ t["about.useful.body1"] }}</p>
+                <p class="text-muted mb-3">{{ t["about.useful.body2"] }}</p>
+                <ul class="clean-list text-muted mb-0">
+                    <li>{{ t["about.useful.point1"] }}</li>
+                    <li>{{ t["about.useful.point2"] }}</li>
+                    <li>{{ t["about.useful.point3"] }}</li>
+                </ul>
             </div>
-        </div>
-
-        <div class="about-section-block">
-            <div class="about-closing-card">
-                <div class="row align-items-center g-4">
-                    <div class="col-lg-8">
-                        <span class="soft-badge">{{ t["about.closing.badge"] }}</span>
-                        <h2 class="about-closing-title">{{ t["about.closing.title"] }}</h2>
-                        <p class="about-closing-text">{{ t["about.closing.subtitle"] }}</p>
-                    </div>
-                    <div class="col-lg-4 d-flex justify-content-lg-end">
-                        <a href="{{ localized_url('analyze_page') }}" class="btn btn-dark btn-lg px-4">{{ t["about.closing.primary_cta"] }}</a>
-                    </div>
-                </div>
-            </div>
-        </div>
+        </section>
     </div>
 </section>
 {% endblock %}

@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}{{ t["brand.name"] }}{% endblock %}</title>
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='favicon.png') }}">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -20,14 +21,17 @@
                 </button>
                 <div class="collapse navbar-collapse" id="mainNav">
                     <ul class="navbar-nav ms-auto align-items-lg-center gap-lg-2">
+                        {% if is_authenticated %}
                         <li class="nav-item"><a class="nav-link {% if page_name == 'home' %}active{% endif %}" href="{{ localized_url('index') }}">{{ t["nav.home"] }}</a></li>
                         <li class="nav-item"><a class="nav-link {% if page_name == 'analyze' %}active{% endif %}" href="{{ localized_url('analyze_page') }}">{{ t["nav.analyze"] }}</a></li>
                         <li class="nav-item"><a class="nav-link {% if page_name == 'portfolio' %}active{% endif %}" href="{{ localized_url('portfolio_page') }}">{{ t["nav.portfolio"] }}</a></li>
                         <li class="nav-item"><a class="nav-link {% if page_name == 'dashboard' %}active{% endif %}" href="{{ localized_url('dashboard_page') }}">{{ t["nav.dashboard"] }}</a></li>
                         <li class="nav-item"><a class="nav-link {% if page_name == 'about' %}active{% endif %}" href="{{ localized_url('about_page') }}">{{ t["nav.about"] }}</a></li>
-                        <li class="nav-item d-none d-lg-block">
-                            <a class="btn btn-dark btn-sm nav-cta" href="{{ localized_url('analyze_page') }}">{{ t["nav.cta"] }}</a>
+                        {% else %}
+                        <li class="nav-item mt-2 mt-lg-0">
+                            <a class="btn btn-dark btn-sm nav-cta" href="{{ localized_url('sign_up_page') }}" {% if page_name == 'sign-up' %}aria-current="page"{% endif %}>{{ t["nav.sign_up"] }}</a>
                         </li>
+                        {% endif %}
                         <li class="nav-item dropdown">
                             <button class="btn btn-outline-secondary dropdown-toggle lang-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
                                 {{ supported_languages[current_lang] }}
@@ -42,6 +46,24 @@
                                 {% endfor %}
                             </ul>
                         </li>
+                        {% if is_authenticated %}
+                        <li class="nav-item dropdown">
+                            <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                {{ t["nav.account"] }}
+                            </button>
+                            <ul class="dropdown-menu dropdown-menu-end">
+                                <li><h6 class="dropdown-header">{{ current_user.name }}</h6></li>
+                                <li><span class="dropdown-item-text small text-muted">{{ current_user.email }}</span></li>
+                                <li><hr class="dropdown-divider"></li>
+                                <li><a class="dropdown-item" href="{{ localized_url('dashboard_page') }}">{{ t["nav.dashboard"] }}</a></li>
+                                <li>
+                                    <form method="post" action="{{ localized_url('sign_out') }}" class="mb-0">
+                                        <button class="dropdown-item" type="submit">{{ t["nav.sign_out"] }}</button>
+                                    </form>
+                                </li>
+                            </ul>
+                        </li>
+                        {% endif %}
                     </ul>
                 </div>
             </div>
@@ -52,9 +74,8 @@
         </main>
 
         <footer class="app-footer">
-            <div class="container d-flex flex-wrap justify-content-between align-items-center gap-2">
-                <div class="footer-copy">{{ t["footer.copy"] }}</div>
-                <a class="btn btn-outline-secondary btn-sm" href="{{ localized_url('analyze_page') }}">{{ t["nav.cta"] }}</a>
+            <div class="container">
+                <div class="footer-copyright">{{ t["footer.copyright"] }}</div>
             </div>
         </footer>
     </div>
