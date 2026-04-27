@@ -171,6 +171,104 @@ function setConfidenceBadge(level) {
     });
 }
 
+function recommendationPrimaryReason(strategyName) {
+    if (strategyName === "Current Price") {
+        return tr(
+            "js.recommendation_reason_current",
+            "Current price already offers the strongest balance of return and risk."
+        );
+    }
+
+    if (strategyName === "Competitive Parity") {
+        return tr(
+            "js.recommendation_reason_parity",
+            "Aligned close to the market reference to stay competitive without over-discounting."
+        );
+    }
+
+    return tr(
+        "js.recommendation_reason_profit",
+        "Optimized for maximum profit under the current demand outlook."
+    );
+}
+
+function recommendationMarketReason(gap) {
+    const numericGap = Number(gap ?? 0);
+    if (numericGap > 0.5) {
+        return tr(
+            "js.recommendation_position_below",
+            "Positioned below competitor reference to support sales volume."
+        );
+    }
+
+    if (numericGap < -0.5) {
+        return tr(
+            "js.recommendation_position_above",
+            "Positioned above competitor reference to protect margin where demand stays resilient."
+        );
+    }
+
+    return tr(
+        "js.recommendation_position_near",
+        "Positioned near competitor reference to balance conversion and margin."
+    );
+}
+
+function recommendationRiskReason(level, scenario) {
+    const scenarioName = scenarioLabel(scenario);
+    const normalized = String(level || "Medium").toLowerCase();
+
+    if (normalized === "low") {
+        return trf(
+            "js.recommendation_risk_low",
+            { scenario: scenarioName },
+            "Low execution risk under the current {scenario} scenario."
+        );
+    }
+
+    if (normalized === "high") {
+        return trf(
+            "js.recommendation_risk_high",
+            { scenario: scenarioName },
+            "Higher execution risk, so rollout should be monitored in the current {scenario} scenario."
+        );
+    }
+
+    return trf(
+        "js.recommendation_risk_medium",
+        { scenario: scenarioName },
+        "Moderate execution risk under the current {scenario} scenario."
+    );
+}
+
+function buildRecommendationBullets(data) {
+    const best = data.best_strategy;
+    return [
+        recommendationPrimaryReason(best.strategy),
+        recommendationMarketReason(best.price_gap_vs_competitor),
+        recommendationRiskReason(best.risk_level, data.product.scenario),
+    ];
+}
+
+function selectStrategyComparisonRows(strategies) {
+    const strategyMap = new Map(strategies.map((strategy) => [strategy.strategy, strategy]));
+    return [
+        "Profit Optimal",
+        "Current Price",
+        "Competitive Parity",
+    ]
+        .map((strategyName) => strategyMap.get(strategyName))
+        .filter(Boolean);
+}
+
+function setScenarioComparisonVisible(isVisible) {
+    const card = document.getElementById("scenarioComparisonCard");
+    if (!card) {
+        return;
+    }
+    card.hidden = !isVisible;
+}
+
 function renderBestStrategyHighlight(data) {
     const container = document.getElementById("bestStrategyHighlight");
     if (!container) {
@@ -179,6 +277,8 @@ function renderBestStrategyHighlight(data) {
 
     container.replaceChildren();
     const best = data.best_strategy;
+    const currentProfit = Number(data.current_option?.profit ?? NaN);
+    const profitChange = Number.isNaN(currentProfit) ? null : best.profit - currentProfit;
     const card = createElement("div", "highlight-card");
     const header = createElement("div", "highlight-card-header");
     const eyebrow = createElement("span", "metric-label", tr("js.highlight_label"));
@@ -195,25 +295,23 @@ function renderBestStrategyHighlight(data) {
         })
     );
 
-    const metrics = createElement("div", "highlight-metrics");
-    const demandMetric = createElement("div", "highlight-metric");
-    demandMetric.append(
-        createElement("span", "metric-label", tr("table.expected_demand")),
-        createElement("div", "metric-value", formatNumber(best.demand, 0))
+    const comparison = createElement("div", "highlight-metric recommendation-impact");
+    const comparisonValue = createElement(
+        "div",
+        `metric-value${profitChange > 0 ? " text-success" : profitChange < 0 ? " text-danger" : ""}`,
+        profitChange === null ? tr("js.profit_change_pending", "Pending") : formatSignedCurrency(profitChange)
     );
-    const marketMetric = createElement("div", "highlight-metric");
-    marketMetric.append(
-        createElement("span", "metric-label", tr("js.market_position")),
-        createElement("div", "metric-value metric-value-compact", formatCompetitorPosition(best.price_gap_vs_competitor))
+    comparison.append(
+        createElement("span", "metric-label", tr("js.profit_change")),
+        comparisonValue
     );
-    const riskMetric = createElement("div", "highlight-metric");
-    riskMetric.append(
-        createElement("span", "metric-label", tr("js.risk_level")),
-        createElement("div", "metric-value", riskLabel(best.risk_level))
-    );
-    metrics.append(demandMetric, marketMetric, riskMetric);
 
-    card.append(header, title, subtitle, metrics);
+    const summaryList = createElement("ul", "explanation-list mt-3 mb-0");
+    buildRecommendationBullets(data).forEach((bullet) => {
+        summaryList.appendChild(createElement("li", null, bullet));
+    });
+
+    card.append(header, title, subtitle, comparison, summaryList);
     container.appendChild(card);
 }
 
@@ -225,35 +323,19 @@ function renderFinancialImpact(data) {
 
     container.replaceChildren();
     const best = data.best_strategy;
-    const currentProfit = Number(data.current_option?.profit ?? NaN);
-    const profitChange = Number.isNaN(currentProfit) ? null : best.profit - currentProfit;
     const cards = [
         {
             label: tr("table.expected_revenue"),
             value: formatCurrency(best.revenue),
-            note: tr("js.revenue_note", "Projected monthly revenue"),
         },
         {
             label: tr("table.total_cost", tr("js.total_cost", "Projected total cost")),
             value: formatCurrency(best.total_cost),
-            note: tr("js.total_cost_note", "Includes unit cost, returns, fees, shipping, and fixed cost allocation"),
         },
         {
             label: tr("table.expected_profit"),
             value: formatCurrency(best.profit),
-            note: tr("js.profit_note_short", "Projected monthly profit"),
             emphasis: true,
-        },
-        {
-            label: tr("table.margin"),
-            value: formatPercent(best.profit_margin),
-            note: tr("js.margin_note_short", "Profit as a share of projected revenue"),
-        },
-        {
-            label: tr("js.profit_change"),
-            value: profitChange === null ? tr("js.profit_change_pending", "Pending") : formatSignedCurrency(profitChange),
-            note: tr("js.profit_change_note", "Change versus the current price"),
-            tone: profitChange > 0 ? "text-success" : profitChange < 0 ? "text-danger" : "",
         },
     ];
 
@@ -263,40 +345,57 @@ function renderFinancialImpact(data) {
             "div",
             `metric-card summary-card${card.emphasis ? " summary-card-primary" : ""}`
         );
-        const note = createElement("p", `metric-note${card.tone ? ` ${card.tone}` : ""}`, card.note);
         wrapper.append(
             createElement("span", "metric-label", card.label),
-            createElement("div", "metric-value", card.value),
-            note
+            createElement("div", "metric-value", card.value)
         );
         col.appendChild(wrapper);
         container.appendChild(col);
     });
 }
 
-function renderExplanation(data) {
-    const block = document.getElementById("explanationBlock");
-    const scenarioBadge = document.getElementById("scenarioLabel");
-    if (!block || !scenarioBadge) {
+function renderAdvancedMetrics(data) {
+    const container = document.getElementById("advancedMetricGrid");
+    if (!container) {
         return;
     }
 
-    block.replaceChildren();
-    scenarioBadge.textContent = trf("js.scenario_prefix", {
-        scenario: scenarioLabel(data.product.scenario),
+    container.replaceChildren();
+    const best = data.best_strategy;
+    const cards = [
+        {
+            label: tr("table.margin"),
+            value: formatPercent(best.profit_margin),
+        },
+        {
+            label: tr("table.expected_demand"),
+            value: formatNumber(best.demand, 0),
+        },
+        {
+            label: tr("js.market_position"),
+            value: formatCompetitorPosition(best.price_gap_vs_competitor),
+            compact: true,
+        },
+        {
+            label: tr("js.risk_level"),
+            value: riskLabel(best.risk_level),
+        },
+    ];
+
+    cards.forEach((card) => {
+        const col = createElement("div", "col-md-6 col-xl-3");
+        const wrapper = createElement("div", "metric-card summary-card");
+        wrapper.append(
+            createElement("span", "metric-label", card.label),
+            createElement(
+                "div",
+                `metric-value${card.compact ? " metric-value-compact" : ""}`,
+                card.value
+            )
+        );
+        col.appendChild(wrapper);
+        container.appendChild(col);
     });
-
-    block.append(createElement("p", "text-muted mb-3", data.explanation.summary));
-
-    const detailList = createElement("ul", "explanation-list mb-0");
-    data.explanation.details.forEach((detail) => {
-        detailList.appendChild(createElement("li", null, detail));
-    });
-    block.appendChild(detailList);
-
-    if (data.explanation.caution) {
-        block.appendChild(createElement("div", "alert alert-warning mt-3 mb-0", data.explanation.caution));
-    }
 }
 
 function renderAssumptions(data) {
@@ -324,56 +423,29 @@ function renderAssumptions(data) {
     });
 }
 
-function renderWhyRecommended(data) {
-    const container = document.getElementById("whyRecommended");
-    if (!container) {
-        return;
-    }
-
-    container.replaceChildren();
-    const reasons = data.explanation.why_recommended || [];
-    if (reasons.length === 0) {
-        container.appendChild(createElement("div", "empty-panel", tr("analyze.empty_recommendation_reason")));
-        return;
-    }
-
-    const list = createElement("ul", "explanation-list mb-0");
-    reasons.forEach((reason) => {
-        list.appendChild(createElement("li", null, reason));
-    });
-    container.appendChild(list);
-}
-
-function renderStrategyTable(strategies) {
+function renderStrategyTable(strategies, bestStrategyName) {
     const tbody = document.getElementById("strategyTableBody");
     if (!tbody) {
         return;
     }
 
     tbody.replaceChildren();
-    strategies.forEach((strategy) => {
-        const row = createElement("tr", strategy.rank === 1 ? "strategy-row-best" : "");
-        const rankCell = createElement("td");
-        rankCell.appendChild(createElement("span", "rank-pill", `#${strategy.rank}`));
+    const rows = selectStrategyComparisonRows(strategies);
 
+    rows.forEach((strategy) => {
+        const row = createElement("tr", strategy.strategy === bestStrategyName ? "strategy-row-best" : "");
         const optionCell = createElement("td", "fw-semibold", strategyLabel(strategy.strategy));
         const priceCell = createElement("td", "table-number", formatCurrency(strategy.price));
-        const demandCell = createElement("td", "table-number", formatNumber(strategy.demand, 0));
         const revenueCell = createElement("td", "table-number", formatCurrency(strategy.revenue));
+        const costCell = createElement("td", "table-number", formatCurrency(strategy.total_cost));
         const profitCell = createElement("td", "table-number", formatCurrency(strategy.profit));
-        const marginCell = createElement("td", "table-number", formatPercent(strategy.profit_margin));
-        const confidenceCell = createElement("td");
-        confidenceCell.appendChild(createConfidenceBadge(strategy.confidence_level));
 
         row.append(
-            rankCell,
             optionCell,
             priceCell,
-            demandCell,
             revenueCell,
+            costCell,
             profitCell,
-            marginCell,
-            confidenceCell
         );
         tbody.appendChild(row);
     });
@@ -500,12 +572,14 @@ function renderScenarioChart(data) {
 function setLoading(isLoading) {
     const analyzeBtn = document.getElementById("analyzeBtn");
     const scenarioBtn = document.getElementById("scenarioCompareBtn");
-    if (!analyzeBtn || !scenarioBtn) {
+    if (!analyzeBtn) {
         return;
     }
 
     analyzeBtn.disabled = isLoading;
-    scenarioBtn.disabled = isLoading;
+    if (scenarioBtn) {
+        scenarioBtn.disabled = isLoading;
+    }
     analyzeBtn.textContent = isLoading ? tr("js.analyzing") : tr("analyze.run_full_analysis");
 }
 
@@ -520,12 +594,12 @@ async function runAnalysis(form, options = {}) {
             ...payload,
             save_history: options.saveHistory !== false,
         });
+        setScenarioComparisonVisible(false);
         renderBestStrategyHighlight(data);
         renderFinancialImpact(data);
-        renderExplanation(data);
+        renderAdvancedMetrics(data);
         renderAssumptions(data);
-        renderWhyRecommended(data);
-        renderStrategyTable(data.strategies);
+        renderStrategyTable(data.strategies, data.best_strategy.strategy);
         renderPriceProfitChart(data.price_profit_curve);
         setConfidenceBadge(data.overall_confidence.level);
         setStatus(
@@ -548,6 +622,7 @@ async function runScenarioComparison(form) {
     try {
         const payload = formPayload(form);
         const data = await postJson("/api/scenario-compare", payload);
+        setScenarioComparisonVisible(true);
         renderScenarioSummary(data);
         renderScenarioChart(data);
         setStatus(

@@ -92,7 +92,7 @@ body {
 
 .hero-title,
 .page-heading h1 {
-    font-size: clamp(2.6rem, 7vw, 5rem);
+    font-size: clamp(2.2rem, 5.5vw, 4.4rem);
     line-height: 0.95;
     letter-spacing: -0.05em;
     font-weight: 800;
@@ -234,6 +234,14 @@ body {
     top: 5.5rem;
 }
 
+.analyze-layout {
+    row-gap: 1.75rem;
+}
+
+.input-panel {
+    padding: 1.35rem;
+}
+
 .form-label {
     font-weight: 700;
     font-size: 0.92rem;
@@ -310,6 +318,12 @@ body {
     padding: 1.5rem;
 }
 
+.recommendation-spotlight .highlight-card {
+    padding: 1.85rem;
+    border-color: rgba(171, 191, 239, 0.96);
+    box-shadow: 0 20px 44px rgba(15, 23, 42, 0.14);
+}
+
 .highlight-card-header {
     display: flex;
     align-items: center;
@@ -325,15 +339,41 @@ body {
     margin-bottom: 0.45rem;
 }
 
+.recommendation-spotlight .highlight-card-header {
+    margin-bottom: 1.15rem;
+}
+
+.recommendation-spotlight .highlight-card-title {
+    font-size: clamp(2.15rem, 4vw, 2.8rem);
+    margin-bottom: 0.5rem;
+}
+
 .highlight-card-subtitle {
     color: var(--muted);
     margin-bottom: 1.25rem;
+}
+
+.recommendation-spotlight .highlight-card-subtitle {
+    max-width: 36rem;
+    margin-bottom: 1.45rem;
+}
+
+.recommendation-impact {
+    max-width: 18rem;
+}
+
+.recommendation-impact .metric-value {
+    font-size: 1.45rem;
 }
 
 .highlight-metrics {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 1rem;
+}
+
+.recommendation-spotlight .highlight-metrics {
+    gap: 1.1rem;
 }
 
 .highlight-metric {
@@ -349,6 +389,7 @@ body {
     letter-spacing: -0.04em;
 }
 
+.metric-value-compact,
 .highlight-metric .metric-value-compact {
     font-size: 1rem;
     line-height: 1.35;
@@ -498,6 +539,10 @@ body {
     min-height: 320px;
 }
 
+.chart-wrap-secondary {
+    min-height: 260px;
+}
+
 .explanation-list {
     margin: 0;
     padding-left: 1.1rem;
@@ -544,6 +589,10 @@ body {
 
 .advanced-panel[open] summary {
     margin-bottom: 0.4rem;
+}
+
+.analyze-advanced-panel {
+    margin-top: 0.35rem;
 }
 
 .assumption-grid {
@@ -680,6 +729,20 @@ body {
 
     .assumption-grid {
         grid-template-columns: 1fr;
+    }
+}
+
+@media (min-width: 992px) {
+    .analyze-input-column {
+        flex: 0 0 31%;
+        width: 31%;
+        max-width: 31%;
+    }
+
+    .analyze-results-column {
+        flex: 0 0 69%;
+        width: 69%;
+        max-width: 69%;
     }
 }
 
@@ -1197,20 +1260,23 @@ body[data-page="home"] .hero-grid {
 }
 
 body[data-page="home"] .hero-copy {
-    max-width: 44rem;
+    max-width: 60rem;
     margin: 0 auto;
     align-items: center;
     text-align: center;
 }
 
 body[data-page="home"] .hero-title {
-    max-width: 13ch;
+    max-width: 22ch;
+    font-size: clamp(2.4rem, 5vw, 4.6rem);
+    line-height: 1.1;
+    letter-spacing: -0.01em;
     margin-bottom: 1rem;
 }
 
 body[data-page="home"] .hero-subtitle {
-    max-width: 34rem;
-    font-size: 1.06rem;
+    max-width: 48rem;
+    font-size: 1.05rem;
 }
 
 body[data-page="home"] .hero-actions {
@@ -1352,6 +1418,63 @@ body[data-page="home"] .home-cta-band .hero-actions {
 .auth-switch-link:hover {
     color: var(--text);
     text-decoration: underline;
+}
+
+body[data-page="sign-in"] .app-main,
+body[data-page="sign-up"] .app-main {
+    padding-bottom: 1.5rem;
+}
+
+body[data-page="sign-in"] .auth-page,
+body[data-page="sign-up"] .auth-page {
+    padding-top: clamp(1.5rem, 3vw, 2.75rem);
+    padding-bottom: clamp(1rem, 2.5vw, 1.75rem);
+}
+
+body[data-page="sign-in"] .auth-page .page-heading,
+body[data-page="sign-up"] .auth-page .page-heading {
+    max-width: 30rem;
+    margin-bottom: 1rem !important;
+}
+
+body[data-page="sign-in"] .auth-page .page-heading h1,
+body[data-page="sign-up"] .auth-page .page-heading h1 {
+    font-size: clamp(2rem, 4vw, 3rem);
+    line-height: 1.05;
+    margin: 0 0 0.65rem;
+    letter-spacing: -0.035em;
+}
+
+body[data-page="sign-in"] .auth-page .page-heading p,
+body[data-page="sign-up"] .auth-page .page-heading p {
+    font-size: 0.98rem;
+    line-height: 1.6;
+    margin-bottom: 0;
+}
+
+body[data-page="sign-in"] .auth-card,
+body[data-page="sign-up"] .auth-card {
+    padding: clamp(1.25rem, 2.5vw, 1.65rem);
+}
+
+body[data-page="sign-in"] .auth-card form,
+body[data-page="sign-up"] .auth-card form {
+    --bs-gutter-y: 0.85rem;
+}
+
+body[data-page="sign-in"] .auth-card .form-control,
+body[data-page="sign-up"] .auth-card .form-control {
+    padding: 0.72rem 0.9rem;
+}
+
+body[data-page="sign-in"] .auth-card .btn-lg,
+body[data-page="sign-up"] .auth-card .btn-lg {
+    padding-block: 0.78rem;
+}
+
+body[data-page="sign-in"] .auth-card > p,
+body[data-page="sign-up"] .auth-card > p {
+    margin-top: 1rem !important;
 }
 
 .about-page {
@@ -1827,5 +1950,123 @@ body[data-page="home"] .home-cta-band .hero-actions {
     body[data-page="home"] #home-capabilities .section-intro,
     body[data-page="home"] #home-flow .section-intro {
         margin-bottom: 1.25rem;
+    }
+}
+
+body[data-page="home"] .hero-copy {
+    max-width: 62rem !important;
+}
+
+body[data-page="home"] .hero-title {
+    max-width: 24ch !important;
+    font-size: clamp(2rem, 3.8vw, 3.8rem) !important;
+    line-height: 1.08 !important;
+    letter-spacing: -0.025em;
+}
+
+body[data-page="home"] .hero-subtitle {
+    max-width: 44rem !important;
+    font-size: 1rem;
+    line-height: 1.7;
+}
+
+body[data-page="home"] .hero-surface {
+  max-width: 980px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+body[data-page="home"] .auth-home-shell {
+    min-height: calc(100vh - 9rem);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 0.9rem;
+}
+
+body[data-page="home"] .auth-home-landing {
+    padding-top: 1.5rem;
+    padding-bottom: 0;
+}
+
+body[data-page="home"] .auth-home-landing .hero-surface {
+    max-width: 1040px;
+    padding: clamp(1.35rem, 2.8vw, 2rem);
+}
+
+body[data-page="home"] .auth-home-landing .hero-copy {
+    max-width: 52rem !important;
+}
+
+body[data-page="home"] .auth-home-landing .hero-title {
+    max-width: none !important;
+    font-size: clamp(2.15rem, 4.1vw, 3.7rem) !important;
+    margin-bottom: 0.75rem;
+}
+
+body[data-page="home"] .auth-home-landing .hero-subtitle {
+    max-width: 40rem !important;
+    font-size: 1rem;
+    margin-bottom: 0;
+}
+
+body[data-page="home"] .auth-home-landing .hero-actions {
+    margin-top: 1.35rem;
+}
+
+body[data-page="home"] .auth-home-onboarding {
+    padding: 0 0 0.5rem;
+}
+
+body[data-page="home"] .auth-home-onboarding .container {
+    max-width: 1040px;
+}
+
+body[data-page="home"] .auth-home-step-card {
+    height: 100%;
+    padding: 1rem 1.1rem;
+    border-radius: 20px;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, #f7fafc 100%);
+}
+
+body[data-page="home"] .auth-home-step-card:hover {
+    transform: none;
+    box-shadow: var(--shadow-soft);
+}
+
+body[data-page="home"] .auth-home-step-number {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 2.2rem;
+    height: 2.2rem;
+    margin-bottom: 0.75rem;
+    padding: 0 0.7rem;
+    border-radius: 999px;
+    background: rgba(15, 23, 42, 0.08);
+    color: var(--text);
+    font-size: 0.82rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+}
+
+body[data-page="home"] .auth-home-step-card h3 {
+    margin-bottom: 0.4rem;
+}
+
+body[data-page="home"] .auth-home-step-card p {
+    margin-bottom: 0;
+    font-size: 0.95rem;
+    line-height: 1.58;
+}
+
+@media (max-width: 991.98px) {
+    body[data-page="home"] .auth-home-shell {
+        min-height: auto;
+        gap: 1rem;
+    }
+
+    body[data-page="home"] .auth-home-landing {
+        padding-top: 1rem;
     }
 }

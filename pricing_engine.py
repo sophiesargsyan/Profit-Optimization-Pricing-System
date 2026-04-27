@@ -733,7 +733,44 @@ def _evaluate_price(product, dataset, assumptions, context, price, strategy_name
     }
 
 
-def _price_bounds(product, dataset, assumptions):
+def _price_bound_value(price_bounds, *keys):
+    if not price_bounds:
+        return None
+
+    for key in keys:
+        value = price_bounds.get(key)
+        if value in (None, ""):
+            continue
+        try:
+            parsed = float(value)
+        except (TypeError, ValueError):
+            continue
+        if parsed > 0:
+            return parsed
+    return None
+
+
+def _apply_requested_price_bounds(lower_bound, upper_bound, price_bounds):
+    min_price = _price_bound_value(price_bounds, "min_price", "lower_bound")
+    max_price = _price_bound_value(price_bounds, "max_price", "upper_bound")
+
+    if min_price is not None:
+        lower_bound = min_price
+    if max_price is not None:
+        upper_bound = max_price
+
+    if lower_bound >= upper_bound:
+        if min_price is not None and max_price is None:
+            upper_bound = lower_bound * 1.25
+        elif max_price is not None and min_price is None:
+            lower_bound = max(0.01, upper_bound * 0.75)
+        else:
+            upper_bound = lower_bound * 1.01
+
+    return _round(lower_bound), _round(upper_bound)
+
+
+def _price_bounds(product, dataset, assumptions, price_bounds=None):
     competitor_reference = assumptions["competitor_reference"]["value"]
     floor = max(product.unit_cost * 1.35, product.current_price * 0.82, 8.0)
     if competitor_reference:
@@ -743,16 +780,16 @@ def _price_bounds(product, dataset, assumptions):
     if competitor_reference:
         ceiling = max(ceiling, competitor_reference * 1.24)
 
-    return _round(floor), _round(ceiling)
+    return _apply_requested_price_bounds(floor, ceiling, price_bounds)
 
 
-def optimize_price(product, dataset=None, assumptions=None, context=None):
+def optimize_price(product, dataset=None, assumptions=None, context=None, price_bounds=None):
     dataset = dataset or load_business_dataset()
     if assumptions is None or context is None:
         built_assumptions, _, built_context = _build_assumptions(product, dataset)
         assumptions = assumptions or built_assumptions
         context = context or built_context
-    lower_bound, upper_bound = _price_bounds(product, dataset, assumptions)
+    lower_bound, upper_bound = _price_bounds(product, dataset, assumptions, price_bounds)
     steps = 28
     interval = (upper_bound - lower_bound) / max(steps - 1, 1)
 
@@ -781,8 +818,8 @@ def optimize_price(product, dataset=None, assumptions=None, context=None):
     }
 
 
-def _strategy_prices(product, dataset, assumptions, context):
-    lower_bound, upper_bound = _price_bounds(product, dataset, assumptions)
+def _strategy_prices(product, dataset, assumptions, context, price_bounds=None):
+    lower_bound, upper_bound = _price_bounds(product, dataset, assumptions, price_bounds)
     competitor_reference = assumptions["competitor_reference"]["value"]
     target_margin = assumptions["target_margin"]["value"]
     return_rate = assumptions["return_rate"]["value"]
@@ -792,7 +829,13 @@ def _strategy_prices(product, dataset, assumptions, context):
         + product.unit_cost * return_rate
     ) / max(1.0 - target_margin - dataset.business_settings.payment_fee_rate, 0.18)
 
-    optimizer = optimize_price(product, dataset=dataset, assumptions=assumptions, context=context)
+    optimizer = optimize_price(
+        product,
+        dataset=dataset,
+        assumptions=assumptions,
+        context=context,
+        price_bounds=price_bounds,
+    )
 
     candidates = {
         "Current Price": product.current_price,
@@ -834,11 +877,17 @@ def _build_recommendation_reasons(best, current_option, assumptions, optimizer):
     return reasons[:4]
 
 
-def run_full_analysis(product):
+def run_full_analysis(product, price_bounds=None):
     validate_product(product)
     dataset = load_business_dataset()
     assumptions, overall_confidence, context = _build_assumptions(product, dataset)
-    strategy_prices, optimizer = _strategy_prices(product, dataset, assumptions, context)
+    strategy_prices, optimizer = _strategy_prices(
+        product,
+        dataset,
+        assumptions,
+        context,
+        price_bounds=price_bounds,
+    )
 
     evaluated = []
     for strategy_name in DISPLAY_STRATEGIES:
@@ -902,12 +951,12 @@ def run_full_analysis(product):
     }
 
 
-def compare_all_scenarios(product):
+def compare_all_scenarios(product, price_bounds=None):
     validate_product(product)
     scenarios = []
 
     for scenario_name in SCENARIOS:
-        result = run_full_analysis(_scenario_product(product, scenario_name))
+        result = run_full_analysis(_scenario_product(product, scenario_name), price_bounds=price_bounds)
         best = result["best_strategy"]
         scenarios.append(
             {

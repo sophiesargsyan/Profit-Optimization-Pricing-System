@@ -3,7 +3,8 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import uuid4
 
-from pricing_engine import ProductData, run_full_analysis
+from pricing_engine import ProductData
+from product_analysis_service import analyze_product
 
 PRODUCT_FIELDS = tuple(ProductData.__dataclass_fields__.keys())
 
@@ -69,7 +70,7 @@ def build_portfolio_comparison(records):
     rows = []
     for record in records:
         product = product_record_to_data(record)
-        analysis = run_full_analysis(product)
+        analysis = analyze_product(product)
         best = analysis["best_strategy"]
         projected_quantity = float(best.get("demand", 0.0) or 0.0)
 

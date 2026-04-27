@@ -1,10 +1,19 @@
+import io
 import tempfile
 import unittest
 from dataclasses import asdict
 from pathlib import Path
 
 from auth_storage import load_users
-from app import DEFAULT_LANG, app, get_translations
+from app import (
+    BULK_TEMPLATE_COLUMNS,
+    DEFAULT_LANG,
+    _build_xlsx_workbook,
+    app,
+    build_bulk_analysis_template,
+    get_translations,
+    validate_bulk_analysis_workbook,
+)
 from data_repository import load_business_dataset
 from export_service import history_to_csv, history_to_json, portfolio_analysis_to_csv
 from financial_formatting import (
@@ -28,6 +37,7 @@ from pricing_engine import (
     run_full_analysis,
     validate_product,
 )
+from product_analysis_service import analyze_product, compare_product_scenarios
 from workspace_service import build_history_entry, build_portfolio_comparison, summarize_portfolio
 
 
@@ -63,6 +73,58 @@ class PricingEngineTests(unittest.TestCase):
         self.assertGreaterEqual(len(analysis["strategies"]), 5)
         self.assertIn("confidence_level", analysis["best_strategy"])
         self.assertIn("baseline_demand", analysis["assumptions"])
+
+    def test_reusable_analysis_service_accepts_structured_product_input(self):
+        analysis = analyze_product(
+            {
+                "product_name": "Luna Crossbody Bag",
+                "category": "Accessories",
+                "unit_cost": 26.0,
+                "current_price": 72.0,
+                "base_demand": 250.0,
+                "competitor_price": 79.0,
+                "elasticity": 1.2,
+                "min_price": 58.0,
+                "max_price": 92.0,
+            }
+        )
+
+        self.assertIn("best_strategy", analysis)
+        self.assertIn("price_profit_curve", analysis)
+        self.assertIn("analysis_summary", analysis)
+        self.assertIn("strategy_comparison", analysis["analysis_summary"])
+        self.assertEqual(analysis["product"]["name"], "Luna Crossbody Bag")
+        self.assertEqual(analysis["product"]["elasticity_override"], -1.2)
+        self.assertEqual(
+            analysis["analysis_summary"]["optimal_price"],
+            analysis["best_strategy"]["price"],
+        )
+        self.assertGreater(len(analysis["analysis_summary"]["candidate_prices"]), 0)
+        prices = [point["price"] for point in analysis["analysis_summary"]["candidate_prices"]]
+        self.assertGreaterEqual(min(prices), 58.0)
+        self.assertLessEqual(max(prices), 92.0)
+
+    def test_reusable_scenario_service_accepts_product_data(self):
+        comparison = compare_product_scenarios(TEST_PRODUCT)
+
+        self.assertEqual(len(comparison["scenarios"]), 4)
+        self.assertIn("aggregate", comparison)
+
+    def test_reusable_analysis_service_maps_free_form_categories(self):
+        analysis = analyze_product(
+            {
+                "product_name": "City Tote Bag",
+                "category": "bags",
+                "unit_cost": 28.0,
+                "current_price": 74.0,
+                "base_demand": 160.0,
+                "competitor_price": 79.0,
+                "elasticity": 1.15,
+            }
+        )
+
+        self.assertEqual(analysis["product"]["category"], "Accessories")
+        self.assertIn("analysis_summary", analysis)
 
     def test_matching_product_uses_history_backed_estimates(self):
         analysis = run_full_analysis(TEST_PRODUCT)
@@ -302,10 +364,12 @@ class FlaskAppTests(unittest.TestCase):
             for lang in ("en", "hy", "ru"):
                 with self.subTest(lang=lang):
                     analyze_response = client.get(f"/analyze?lang={lang}")
+                    bulk_response = client.get(f"/bulk-analysis?lang={lang}")
                     portfolio_response = client.get(f"/portfolio?lang={lang}")
                     dashboard_response = client.get(f"/dashboard?lang={lang}")
                     about_response = client.get(f"/about?lang={lang}")
                     self.assertEqual(analyze_response.status_code, 200)
+                    self.assertEqual(bulk_response.status_code, 200)
                     self.assertEqual(portfolio_response.status_code, 200)
                     self.assertEqual(dashboard_response.status_code, 200)
                     self.assertEqual(about_response.status_code, 200)
@@ -384,6 +448,148 @@ class FlaskAppTests(unittest.TestCase):
         self.assertIn("text/csv", response.content_type)
         self.assertIn("product_name,category,scenario,current_price", body)
         self.assertIn("Luna Crossbody Bag", body)
+
+    def test_bulk_template_download_validates_successfully(self):
+        template_content = build_bulk_analysis_template()
+        validation_result = validate_bulk_analysis_workbook(io.BytesIO(template_content))
+
+        self.assertEqual(validation_result.errors, [])
+        self.assertEqual(validation_result.valid_row_count, 1)
+
+        with self.client as client:
+            self._sign_up(client)
+            download_response = client.get("/bulk-analysis/template.xlsx?lang=en")
+            upload_response = client.post(
+                "/bulk-analysis?lang=en",
+                data={"product_file": (io.BytesIO(template_content), "products.xlsx")},
+                content_type="multipart/form-data",
+                follow_redirects=True,
+            )
+            body = upload_response.get_data(as_text=True)
+
+        self.assertEqual(download_response.status_code, 200)
+        self.assertEqual(download_response.data[:2], b"PK")
+        self.assertIn("spreadsheetml.sheet", download_response.content_type)
+        self.assertEqual(upload_response.status_code, 200)
+        self.assertIn("Bulk analysis summary is ready.", body)
+        self.assertIn("1 of 1 products were analyzed successfully. 0 products failed.", body)
+        self.assertIn("SKU-001", body)
+        self.assertIn("Optimal Price", body)
+
+    def test_bulk_upload_accepts_free_form_categories(self):
+        workbook_content = _build_xlsx_workbook(
+            (
+                BULK_TEMPLATE_COLUMNS,
+                (
+                    "SKU-BAG",
+                    "City Tote Bag",
+                    "bags",
+                    72,
+                    26,
+                    250,
+                    1.2,
+                    79,
+                    "",
+                    "",
+                ),
+                (
+                    "SKU-RING",
+                    "Stacking Ring",
+                    "rings",
+                    50,
+                    20,
+                    100,
+                    1.1,
+                    55,
+                    "",
+                    "",
+                ),
+            )
+        )
+
+        with self.client as client:
+            self._sign_up(client)
+            response = client.post(
+                "/bulk-analysis?lang=en",
+                data={"product_file": (io.BytesIO(workbook_content), "products.xlsx")},
+                content_type="multipart/form-data",
+            )
+            body = response.get_data(as_text=True)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("2 of 2 products were analyzed successfully. 0 products failed.", body)
+        self.assertIn("SKU-BAG", body)
+        self.assertIn("SKU-RING", body)
+        self.assertNotIn("Category must be one of", body)
+
+    def test_bulk_upload_reports_missing_required_columns_together(self):
+        invalid_content = _build_xlsx_workbook(
+            (
+                ("product_id", "product_name", "category", "unit_cost", "base_demand", "competitor_price"),
+                ("SKU-002", "Invalid Product", "Accessories", 12, 100, 15),
+            )
+        )
+
+        with self.client as client:
+            self._sign_up(client)
+            response = client.post(
+                "/bulk-analysis?lang=en",
+                data={"product_file": (io.BytesIO(invalid_content), "products.xlsx")},
+                content_type="multipart/form-data",
+            )
+            body = response.get_data(as_text=True)
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("Missing required columns: current_price, elasticity.", body)
+
+    def test_bulk_upload_reports_row_level_validation_errors(self):
+        invalid_content = _build_xlsx_workbook(
+            (
+                BULK_TEMPLATE_COLUMNS,
+                (
+                    "SKU-002",
+                    "Invalid Product",
+                    "Accessories",
+                    0,
+                    "not-a-number",
+                    15,
+                    0,
+                    "bad-price",
+                    100,
+                    90,
+                ),
+                (
+                    "SKU-003",
+                    "Invalid Optional Prices",
+                    "Accessories",
+                    25,
+                    10,
+                    80,
+                    1.1,
+                    27,
+                    -1,
+                    0,
+                ),
+            )
+        )
+
+        with self.client as client:
+            self._sign_up(client)
+            response = client.post(
+                "/bulk-analysis?lang=en",
+                data={"product_file": (io.BytesIO(invalid_content), "products.xlsx")},
+                content_type="multipart/form-data",
+            )
+            body = response.get_data(as_text=True)
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("Row 2: current_price must be greater than 0.", body)
+        self.assertIn("Row 2: unit_cost must be a valid number.", body)
+        self.assertIn("Row 2: elasticity must be greater than 0.", body)
+        self.assertIn("Row 2: competitor_price must be a valid number.", body)
+        self.assertIn("Row 2: min_price must be less than max_price.", body)
+        self.assertIn("Row 3: min_price must be greater than 0.", body)
+        self.assertIn("Row 3: max_price must be greater than 0.", body)
 
     def test_portfolio_page_renders_financial_summary_and_contribution_analysis(self):
         add_portfolio_product(self.portfolio_file, self.payload)

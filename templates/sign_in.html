@@ -8,7 +8,9 @@
         <div class="row justify-content-center">
             <div class="col-lg-6 col-xl-5">
                 <div class="page-heading text-center mb-4">
+                    {% if t["auth.sign_in.eyebrow"] %}
                     <span class="eyebrow-pill">{{ t["auth.sign_in.eyebrow"] }}</span>
+                    {% endif %}
                     <h1>{{ t["auth.sign_in.title"] }}</h1>
                     <p>{{ t["auth.sign_in.subtitle"] }}</p>
                 </div>

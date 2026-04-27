@@ -3,14 +3,21 @@
 {% block title %}{{ t["brand.name"] }} | {{ t["title.home"] }}{% endblock %}
 
 {% block content %}
-<section class="hero-section home-landing">
+{% set use_auth_home_copy = is_authenticated %}
+{% set hero_title = t["home.auth_title"] if use_auth_home_copy else t["home.title"] %}
+{% set hero_subtitle = t["home.auth_subtitle"] if use_auth_home_copy else t["home.subtitle"] %}
+{% set landing_class = "home-landing auth-home-landing" if use_auth_home_copy else "home-landing" %}
+{% if use_auth_home_copy %}<div class="auth-home-shell">{% endif %}
+<section class="hero-section {{ landing_class }}">
     <div class="container">
         <div class="hero-surface">
             <div class="hero-grid">
                 <div class="hero-copy">
                     <span class="eyebrow-pill">{{ t["home.eyebrow"] }}</span>
-                    <h1 class="hero-title">{{ t["home.title"] }}</h1>
-                    <p class="hero-subtitle">{{ t["home.subtitle"] }}</p>
+                    <h1 class="hero-title">{{ hero_title }}</h1>
+                    {% if hero_subtitle %}
+                    <p class="hero-subtitle">{{ hero_subtitle }}</p>
+                    {% endif %}
                     <div class="hero-actions">
                         <a href="{{ protected_url('analyze_page') }}" class="btn btn-dark btn-lg px-4">{{ t["home.start_analysis"] }}</a>
                     </div>
@@ -19,84 +26,34 @@
         </div>
     </div>
 </section>
-
-<section class="home-section" id="home-capabilities">
+{% if use_auth_home_copy %}
+<section class="auth-home-onboarding">
     <div class="container">
-        <div class="section-intro">
-            <h2>{{ t["home.features.title"] }}</h2>
-            <p>{{ t["home.features.subtitle"] }}</p>
-        </div>
-
-        <div class="row g-4">
-            <div class="col-md-6 col-xl-3">
-                <div class="feature-card capability-card h-100">
-                    <div class="feature-icon">01</div>
-                    <h3>{{ t["home.feature1.title"] }}</h3>
-                    <p>{{ t["home.feature1.description"] }}</p>
+        <div class="row g-3">
+            <div class="col-md-4">
+                <div class="feature-card auth-home-step-card h-100">
+                    <span class="auth-home-step-number">01</span>
+                    <h3>{{ t["home.auth_step1.title"] }}</h3>
+                    <p>{{ t["home.auth_step1.text"] }}</p>
                 </div>
             </div>
-            <div class="col-md-6 col-xl-3">
-                <div class="feature-card capability-card h-100">
-                    <div class="feature-icon">02</div>
-                    <h3>{{ t["home.feature2.title"] }}</h3>
-                    <p>{{ t["home.feature2.description"] }}</p>
+            <div class="col-md-4">
+                <div class="feature-card auth-home-step-card h-100">
+                    <span class="auth-home-step-number">02</span>
+                    <h3>{{ t["home.auth_step2.title"] }}</h3>
+                    <p>{{ t["home.auth_step2.text"] }}</p>
                 </div>
             </div>
-            <div class="col-md-6 col-xl-3">
-                <div class="feature-card capability-card h-100">
-                    <div class="feature-icon">03</div>
-                    <h3>{{ t["home.feature3.title"] }}</h3>
-                    <p>{{ t["home.feature3.description"] }}</p>
-                </div>
-            </div>
-            <div class="col-md-6 col-xl-3">
-                <div class="feature-card capability-card h-100">
-                    <div class="feature-icon">04</div>
-                    <h3>{{ t["home.feature4.title"] }}</h3>
-                    <p>{{ t["home.feature4.description"] }}</p>
+            <div class="col-md-4">
+                <div class="feature-card auth-home-step-card h-100">
+                    <span class="auth-home-step-number">03</span>
+                    <h3>{{ t["home.auth_step3.title"] }}</h3>
+                    <p>{{ t["home.auth_step3.text"] }}</p>
                 </div>
             </div>
         </div>
     </div>
 </section>
-
-<section class="home-section" id="home-flow">
-    <div class="container">
-        <div class="section-intro">
-            <h2>{{ t["home.flow.title"] }}</h2>
-            <p>{{ t["home.flow.subtitle"] }}</p>
-        </div>
-
-        <div class="row g-4">
-            <div class="col-md-6 col-xl-3">
-                <div class="flow-step">
-                    <span class="flow-step-number">01</span>
-                    <h3>{{ t["home.flow.step1.title"] }}</h3>
-                    <p>{{ t["home.flow.step1.description"] }}</p>
-                </div>
-            </div>
-            <div class="col-md-6 col-xl-3">
-                <div class="flow-step">
-                    <span class="flow-step-number">02</span>
-                    <h3>{{ t["home.flow.step2.title"] }}</h3>
-                    <p>{{ t["home.flow.step2.description"] }}</p>
-                </div>
-            </div>
-            <div class="col-md-6 col-xl-3">
-                <div class="flow-step">
-                    <span class="flow-step-number">03</span>
-                    <h3>{{ t["home.flow.step3.title"] }}</h3>
-                    <p>{{ t["home.flow.step3.description"] }}</p>
-                </div>
-            </div>
-            <div class="col-md-6 col-xl-3">
-                <div class="flow-step">
-                    <span class="flow-step-number">04</span>
-                    <h3>{{ t["home.flow.step4.title"] }}</h3>
-                    <p>{{ t["home.flow.step4.description"] }}</p>
-                </div>
-            </div>
-        </div>
-    </div>
-</section>
+</div>
+{% endif %}
 {% endblock %}

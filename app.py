@@ -2,13 +2,18 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import secrets
-from dataclasses import asdict
+import xml.etree.ElementTree as ET
+from dataclasses import asdict, dataclass
 from datetime import datetime
 from functools import wraps
+from io import BytesIO
 from pathlib import Path
 from urllib.parse import urljoin, urlparse
 from uuid import uuid4
+from xml.sax.saxutils import escape
+from zipfile import BadZipFile, ZIP_DEFLATED, ZipFile
 
 from flask import (
     Flask,
@@ -43,8 +48,9 @@ from portfolio_storage import (
     load_portfolio,
     update_portfolio_product,
 )
-from pricing_engine import ProductData, compare_all_scenarios, run_full_analysis
+from pricing_engine import ProductData
 from product_defaults import DEFAULT_PRODUCT, EMPTY_PRODUCT
+from product_analysis_service import analyze_product, compare_product_scenarios
 from workspace_service import (
     build_dashboard_snapshot,
     build_history_entry,
@@ -133,6 +139,55 @@ PRODUCT_FORM_FIELDS = (
     + tuple(OPTIONAL_NUMERIC_FIELDS.keys())
     + ("scenario",)
 )
+
+BULK_TEMPLATE_COLUMNS = (
+    "product_id",
+    "product_name",
+    "category",
+    "current_price",
+    "unit_cost",
+    "base_demand",
+    "elasticity",
+    "competitor_price",
+    "min_price",
+    "max_price",
+)
+
+BULK_TEMPLATE_SAMPLE_ROW = (
+    "SKU-001",
+    "Luna Crossbody Bag",
+    "Accessories",
+    72.0,
+    26.0,
+    250,
+    1.2,
+    79.0,
+    58.0,
+    92.0,
+)
+
+BULK_OPTIONAL_COLUMNS = {"min_price", "max_price"}
+BULK_REQUIRED_COLUMNS = tuple(
+    column for column in BULK_TEMPLATE_COLUMNS if column not in BULK_OPTIONAL_COLUMNS
+)
+BULK_REQUIRED_TEXT_FIELDS = ("product_id", "product_name", "category")
+BULK_REQUIRED_POSITIVE_NUMERIC_FIELDS = (
+    "current_price",
+    "unit_cost",
+    "base_demand",
+    "elasticity",
+    "competitor_price",
+)
+BULK_OPTIONAL_NUMERIC_FIELDS = ("min_price", "max_price")
+
+
+@dataclass
+class BulkValidationResult:
+    errors: list[str]
+    valid_row_count: int = 0
+
+
+BULK_ACTION_TOLERANCE_PERCENT = 2.0
 
 LEGACY_FIELD_ALIASES = {
     "current_price": ("base_price",),
@@ -840,12 +895,458 @@ def render_auth_page(
     )
 
 
+def render_bulk_analysis_page(validation_errors=None, bulk_results=None, status=200):
+    return (
+        render_template(
+            "bulk_analysis.html",
+            page_name="bulk-analysis",
+            validation_errors=validation_errors or [],
+            bulk_results=bulk_results,
+        ),
+        status,
+    )
+
+
 def download_response(content, filename, mimetype):
     return Response(
         content,
         mimetype=mimetype,
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+def _xlsx_column_name(column_index):
+    name = ""
+    while column_index:
+        column_index, remainder = divmod(column_index - 1, 26)
+        name = chr(65 + remainder) + name
+    return name
+
+
+def _xlsx_cell(column_index, row_index, value):
+    cell_ref = f"{_xlsx_column_name(column_index)}{row_index}"
+    if isinstance(value, (int, float)):
+        return f'<c r="{cell_ref}"><v>{value}</v></c>'
+    cell_value = escape(str(value))
+    return f'<c r="{cell_ref}" t="inlineStr"><is><t>{cell_value}</t></is></c>'
+
+
+def _xlsx_row(row_index, values):
+    cells = "".join(
+        _xlsx_cell(column_index, row_index, value)
+        for column_index, value in enumerate(values, start=1)
+    )
+    return f'<row r="{row_index}">{cells}</row>'
+
+
+def _build_xlsx_workbook(rows, sheet_name="Bulk Analysis"):
+    sheet_rows = "".join(
+        _xlsx_row(row_index, row_values)
+        for row_index, row_values in enumerate(rows, start=1)
+    )
+    worksheet = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+        f"<sheetData>{sheet_rows}</sheetData>"
+        "</worksheet>"
+    )
+
+    workbook = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" '
+        'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+        f'<sheets><sheet name="{escape(sheet_name)}" sheetId="1" r:id="rId1"/></sheets>'
+        "</workbook>"
+    )
+
+    content_types = (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+        '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+        '<Default Extension="xml" ContentType="application/xml"/>'
+        '<Override PartName="/xl/workbook.xml" '
+        'ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
+        '<Override PartName="/xl/worksheets/sheet1.xml" '
+        'ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'
+        "</Types>"
+    )
+
+    package_relationships = (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+        '<Relationship Id="rId1" '
+        'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" '
+        'Target="xl/workbook.xml"/>'
+        "</Relationships>"
+    )
+
+    workbook_relationships = (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+        '<Relationship Id="rId1" '
+        'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" '
+        'Target="worksheets/sheet1.xml"/>'
+        "</Relationships>"
+    )
+
+    output = BytesIO()
+    with ZipFile(output, "w", ZIP_DEFLATED) as archive:
+        archive.writestr("[Content_Types].xml", content_types)
+        archive.writestr("_rels/.rels", package_relationships)
+        archive.writestr("xl/workbook.xml", workbook)
+        archive.writestr("xl/_rels/workbook.xml.rels", workbook_relationships)
+        archive.writestr("xl/worksheets/sheet1.xml", worksheet)
+
+    return output.getvalue()
+
+
+def build_bulk_analysis_template():
+    return _build_xlsx_workbook((BULK_TEMPLATE_COLUMNS, BULK_TEMPLATE_SAMPLE_ROW))
+
+
+def _xml_local_name(tag):
+    return tag.rsplit("}", 1)[-1] if "}" in tag else tag
+
+
+def _xml_text(node, child_name):
+    for child in node:
+        if _xml_local_name(child.tag) == child_name:
+            return child.text or ""
+    return ""
+
+
+def _read_shared_strings(archive):
+    try:
+        shared_strings_xml = archive.read("xl/sharedStrings.xml")
+    except KeyError:
+        return []
+
+    root = ET.fromstring(shared_strings_xml)
+    shared_strings = []
+    for item in root:
+        if _xml_local_name(item.tag) != "si":
+            continue
+        shared_strings.append(
+            "".join(node.text or "" for node in item.iter() if _xml_local_name(node.tag) == "t")
+        )
+    return shared_strings
+
+
+def _first_worksheet_path(archive):
+    file_names = set(archive.namelist())
+    default_path = "xl/worksheets/sheet1.xml"
+    if default_path in file_names:
+        return default_path
+
+    worksheet_paths = sorted(
+        name for name in file_names if name.startswith("xl/worksheets/") and name.endswith(".xml")
+    )
+    if worksheet_paths:
+        return worksheet_paths[0]
+
+    raise ValueError("No worksheet found in the uploaded Excel file.")
+
+
+def _xlsx_column_index_from_ref(cell_ref):
+    match = re.match(r"([A-Z]+)", str(cell_ref or "").upper())
+    if not match:
+        return None
+
+    column_index = 0
+    for character in match.group(1):
+        column_index = column_index * 26 + (ord(character) - ord("A") + 1)
+    return column_index - 1
+
+
+def _xlsx_cell_value(cell, shared_strings):
+    cell_type = cell.attrib.get("t")
+    if cell_type == "inlineStr":
+        return "".join(
+            node.text or "" for node in cell.iter() if _xml_local_name(node.tag) == "t"
+        ).strip()
+
+    raw_value = _xml_text(cell, "v").strip()
+    if cell_type == "s" and raw_value:
+        try:
+            return shared_strings[int(raw_value)].strip()
+        except (IndexError, ValueError):
+            return ""
+
+    return raw_value
+
+
+def _read_xlsx_rows(xlsx_content):
+    try:
+        with ZipFile(BytesIO(xlsx_content)) as archive:
+            shared_strings = _read_shared_strings(archive)
+            worksheet_xml = archive.read(_first_worksheet_path(archive))
+    except BadZipFile as exc:
+        raise ValueError("Could not read the Excel file. Please upload a valid .xlsx workbook.") from exc
+    except KeyError as exc:
+        raise ValueError("The uploaded Excel file is missing worksheet data.") from exc
+
+    try:
+        worksheet = ET.fromstring(worksheet_xml)
+    except ET.ParseError as exc:
+        raise ValueError("Could not parse the uploaded Excel worksheet.") from exc
+
+    rows = []
+    fallback_row_number = 0
+    for row in worksheet.iter():
+        if _xml_local_name(row.tag) != "row":
+            continue
+
+        fallback_row_number += 1
+        row_number = int(row.attrib.get("r") or fallback_row_number)
+        cell_values = {}
+        for cell in row:
+            if _xml_local_name(cell.tag) != "c":
+                continue
+
+            column_index = _xlsx_column_index_from_ref(cell.attrib.get("r"))
+            if column_index is None:
+                continue
+            cell_values[column_index] = _xlsx_cell_value(cell, shared_strings)
+
+        if cell_values:
+            values = ["" for _ in range(max(cell_values) + 1)]
+            for column_index, value in cell_values.items():
+                values[column_index] = value
+            rows.append((row_number, values))
+
+    return rows
+
+
+def _normalize_bulk_header(value):
+    return str(value or "").strip().lower()
+
+
+def _bulk_header_map(header_values):
+    header_map = {}
+    for index, value in enumerate(header_values):
+        header_name = _normalize_bulk_header(value)
+        if header_name and header_name not in header_map:
+            header_map[header_name] = index
+    return header_map
+
+
+def _is_blank_cell(value):
+    return value is None or str(value).strip() == ""
+
+
+def _bulk_row_value(row_values, header_map, field_name):
+    column_index = header_map.get(field_name)
+    if column_index is None or column_index >= len(row_values):
+        return ""
+    return row_values[column_index]
+
+
+def _bulk_data_rows(rows):
+    return [
+        (row_number, row_values)
+        for row_number, row_values in rows[1:]
+        if any(not _is_blank_cell(value) for value in row_values)
+    ]
+
+
+def _parse_bulk_number(value, row_number, field_name, errors, required=False, positive=False):
+    if _is_blank_cell(value):
+        if required:
+            errors.append(f"Row {row_number}: {field_name} is required.")
+        return None
+
+    try:
+        numeric_value = float(str(value).strip())
+    except (TypeError, ValueError):
+        errors.append(f"Row {row_number}: {field_name} must be a valid number.")
+        return None
+
+    if positive and numeric_value <= 0:
+        errors.append(f"Row {row_number}: {field_name} must be greater than 0.")
+    return numeric_value
+
+
+def _parse_valid_bulk_number(value):
+    return None if _is_blank_cell(value) else float(str(value).strip())
+
+
+def validate_bulk_analysis_workbook(uploaded_file):
+    xlsx_content = uploaded_file.read()
+    if not xlsx_content:
+        return BulkValidationResult(errors=["The uploaded file is empty."])
+
+    rows = _read_xlsx_rows(xlsx_content)
+    if not rows:
+        return BulkValidationResult(
+            errors=["The uploaded Excel file is empty. Use the template and add product rows."]
+        )
+
+    header_map = _bulk_header_map(rows[0][1])
+
+    missing_columns = [column for column in BULK_REQUIRED_COLUMNS if column not in header_map]
+    if missing_columns:
+        return BulkValidationResult(
+            errors=[f"Missing required columns: {', '.join(missing_columns)}."]
+        )
+
+    data_rows = _bulk_data_rows(rows)
+    if not data_rows:
+        return BulkValidationResult(
+            errors=["No product rows found. Add at least one product row below the header."]
+        )
+
+    errors = []
+    for row_number, row_values in data_rows:
+        for field_name in BULK_REQUIRED_TEXT_FIELDS:
+            if _is_blank_cell(_bulk_row_value(row_values, header_map, field_name)):
+                errors.append(f"Row {row_number}: {field_name} is required.")
+
+        numeric_values = {}
+        for field_name in BULK_REQUIRED_POSITIVE_NUMERIC_FIELDS:
+            numeric_values[field_name] = _parse_bulk_number(
+                _bulk_row_value(row_values, header_map, field_name),
+                row_number,
+                field_name,
+                errors,
+                required=True,
+                positive=True,
+            )
+
+        for field_name in BULK_OPTIONAL_NUMERIC_FIELDS:
+            if field_name not in header_map:
+                continue
+            numeric_values[field_name] = _parse_bulk_number(
+                _bulk_row_value(row_values, header_map, field_name),
+                row_number,
+                field_name,
+                errors,
+                positive=True,
+            )
+
+        min_price = numeric_values.get("min_price")
+        max_price = numeric_values.get("max_price")
+        if min_price is not None and max_price is not None and min_price >= max_price:
+            errors.append("Row {row}: min_price must be less than max_price.".format(row=row_number))
+
+    return BulkValidationResult(errors=errors, valid_row_count=0 if errors else len(data_rows))
+
+
+def parse_bulk_analysis_products(xlsx_content):
+    rows = _read_xlsx_rows(xlsx_content)
+    if not rows:
+        return []
+
+    header_map = _bulk_header_map(rows[0][1])
+    products = []
+    for row_number, row_values in _bulk_data_rows(rows):
+        product = {
+            "row_number": row_number,
+            "product_id": str(_bulk_row_value(row_values, header_map, "product_id")).strip(),
+            "product_name": str(_bulk_row_value(row_values, header_map, "product_name")).strip(),
+            "category": str(_bulk_row_value(row_values, header_map, "category")).strip(),
+            "current_price": _parse_valid_bulk_number(
+                _bulk_row_value(row_values, header_map, "current_price")
+            ),
+            "unit_cost": _parse_valid_bulk_number(
+                _bulk_row_value(row_values, header_map, "unit_cost")
+            ),
+            "base_demand": _parse_valid_bulk_number(
+                _bulk_row_value(row_values, header_map, "base_demand")
+            ),
+            "elasticity": _parse_valid_bulk_number(
+                _bulk_row_value(row_values, header_map, "elasticity")
+            ),
+            "competitor_price": _parse_valid_bulk_number(
+                _bulk_row_value(row_values, header_map, "competitor_price")
+            ),
+        }
+        if "min_price" in header_map:
+            product["min_price"] = _parse_valid_bulk_number(
+                _bulk_row_value(row_values, header_map, "min_price")
+            )
+        if "max_price" in header_map:
+            product["max_price"] = _parse_valid_bulk_number(
+                _bulk_row_value(row_values, header_map, "max_price")
+            )
+        products.append(product)
+
+    return products
+
+
+def _percent_change(new_value, old_value):
+    if not old_value:
+        return 0.0
+    return round(((float(new_value) - float(old_value)) / float(old_value)) * 100, 2)
+
+
+def _recommended_bulk_action(price_change_percent):
+    if price_change_percent > BULK_ACTION_TOLERANCE_PERCENT:
+        return "Increase price"
+    if price_change_percent < -BULK_ACTION_TOLERANCE_PERCENT:
+        return "Decrease price"
+    return "Keep current price"
+
+
+def _contribution_margin_percent(revenue, variable_cost):
+    revenue = float(revenue or 0.0)
+    if revenue <= 0:
+        return 0.0
+    return round(((revenue - float(variable_cost or 0.0)) / revenue) * 100, 2)
+
+
+def _bulk_summary_row(product_input, analysis):
+    summary = analysis["analysis_summary"]
+    price_change_percent = _percent_change(
+        summary["optimal_price"],
+        product_input["current_price"],
+    )
+    return {
+        "row_number": product_input["row_number"],
+        "product_id": product_input["product_id"],
+        "product_name": product_input["product_name"],
+        "category": product_input["category"],
+        "current_price": product_input["current_price"],
+        "optimal_price": summary["optimal_price"],
+        "price_change_percent": price_change_percent,
+        "expected_quantity": summary["expected_quantity"],
+        "expected_revenue": summary["expected_revenue"],
+        "expected_profit": summary["expected_profit"],
+        "contribution_margin": _contribution_margin_percent(
+            summary["expected_revenue"],
+            summary["expected_variable_cost"],
+        ),
+        "recommended_action": _recommended_bulk_action(price_change_percent),
+    }
+
+
+def process_bulk_analysis_products(products):
+    result = {
+        "summary": {
+            "total_products": len(products),
+            "processed_count": 0,
+            "failed_count": 0,
+        },
+        "products": [],
+        "errors": [],
+    }
+
+    for product in products:
+        try:
+            analysis = analyze_product(product)
+            result["products"].append(_bulk_summary_row(product, analysis))
+        except Exception as exc:
+            app.logger.info("Bulk analysis failed for row %s: %s", product.get("row_number"), exc)
+            result["errors"].append(
+                "Row {row}: {product_id} could not be analyzed. {error}".format(
+                    row=product.get("row_number"),
+                    product_id=product.get("product_id") or product.get("product_name") or "Product",
+                    error=str(exc),
+                )
+            )
+
+    result["summary"]["processed_count"] = len(result["products"])
+    result["summary"]["failed_count"] = len(result["errors"])
+    return result
 
 
 @app.route("/")
@@ -872,6 +1373,59 @@ def analyze_page():
         selected_portfolio_product=selected_portfolio_product,
         categories=sorted(CATEGORY_PROFILES),
         dataset_products=load_business_dataset().products,
+    )
+
+
+@app.route("/bulk-analysis", methods=["GET", "POST"])
+@login_required
+def bulk_analysis_page():
+    if request.method == "POST":
+        uploaded_file = request.files.get("product_file")
+        if not uploaded_file or not uploaded_file.filename:
+            return render_bulk_analysis_page(
+                validation_errors=[
+                    translated_message(
+                        "bulk_analysis.upload_required",
+                        "Choose an .xlsx file before starting bulk analysis.",
+                    )
+                ],
+                status=400,
+            )
+
+        if Path(uploaded_file.filename).suffix.lower() != ".xlsx":
+            return render_bulk_analysis_page(
+                validation_errors=[
+                    translated_message(
+                        "bulk_analysis.upload_invalid",
+                        "Please upload an .xlsx file.",
+                    )
+                ],
+                status=400,
+            )
+
+        uploaded_content = uploaded_file.read()
+        try:
+            validation_result = validate_bulk_analysis_workbook(BytesIO(uploaded_content))
+        except ValueError as exc:
+            validation_result = BulkValidationResult(errors=[str(exc)])
+
+        if validation_result.errors:
+            return render_bulk_analysis_page(validation_errors=validation_result.errors, status=400)
+
+        bulk_products = parse_bulk_analysis_products(uploaded_content)
+        bulk_results = process_bulk_analysis_products(bulk_products)
+        return render_bulk_analysis_page(bulk_results=bulk_results)
+
+    return render_bulk_analysis_page()
+
+
+@app.route("/bulk-analysis/template.xlsx")
+@login_required
+def bulk_analysis_template():
+    return download_response(
+        build_bulk_analysis_template(),
+        "pricepilot_bulk_product_template.xlsx",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
 
 
@@ -1077,8 +1631,8 @@ def dashboard_page():
         )
 
     focus_product = product_record_to_data(focus_record) if focus_record else build_reference_product()
-    focus_analysis = run_full_analysis(focus_product)
-    focus_scenarios = compare_all_scenarios(focus_product)
+    focus_analysis = analyze_product(focus_product)
+    focus_scenarios = compare_product_scenarios(focus_product)
     dashboard_snapshot = build_dashboard_snapshot(comparison_rows, focus_analysis, focus_scenarios)
 
     return render_template(
@@ -1113,7 +1667,7 @@ def api_analyze():
 
     try:
         product = parse_product(data)
-        result = run_full_analysis(product)
+        result = analyze_product(product)
 
         if _boolean_input(data.get("save_history"), default=True):
             append_history_entry(get_history_file(), build_history_entry(result))
@@ -1140,7 +1694,7 @@ def api_scenario_compare():
 
     try:
         product = parse_product(data, scenario_override="NORMAL")
-        result = compare_all_scenarios(product)
+        result = compare_product_scenarios(product)
         return api_success(result)
     except ValueError as exc:
         app.logger.info("Validation error on /api/scenario-compare: %s", exc)
