@@ -269,6 +269,14 @@ function setScenarioComparisonVisible(isVisible) {
     card.hidden = !isVisible;
 }
 
+function setAnalysisResultsVisible(isVisible) {
+    const shell = document.getElementById("analysisResultsShell");
+    if (!shell) {
+        return;
+    }
+    shell.hidden = !isVisible;
+}
+
 function renderBestStrategyHighlight(data) {
     const container = document.getElementById("bestStrategyHighlight");
     if (!container) {
@@ -585,6 +593,8 @@ function setLoading(isLoading) {
 
 async function runAnalysis(form, options = {}) {
     setAlert("");
+    setAnalysisResultsVisible(false);
+    setScenarioComparisonVisible(false);
     setLoading(true);
     setStatus(tr("js.running_analysis"));
 
@@ -594,7 +604,7 @@ async function runAnalysis(form, options = {}) {
             ...payload,
             save_history: options.saveHistory !== false,
         });
-        setScenarioComparisonVisible(false);
+        setAnalysisResultsVisible(true);
         renderBestStrategyHighlight(data);
         renderFinancialImpact(data);
         renderAdvancedMetrics(data);
@@ -608,6 +618,7 @@ async function runAnalysis(form, options = {}) {
             })
         );
     } catch (error) {
+        setAnalysisResultsVisible(false);
         setAlert(error.message);
         setStatus(tr("js.analysis_failed"), true);
     } finally {
@@ -642,6 +653,19 @@ document.addEventListener("DOMContentLoaded", () => {
         return;
     }
 
+    const advancedPanel = document.querySelector(".analysis-advanced-fields");
+    const advancedToggleText = document.querySelector(".analysis-advanced-toggle-text");
+    if (advancedPanel && advancedToggleText) {
+        const syncAdvancedToggleText = () => {
+            advancedToggleText.textContent = advancedPanel.open
+                ? advancedToggleText.dataset.openLabel
+                : advancedToggleText.dataset.closedLabel;
+        };
+
+        syncAdvancedToggleText();
+        advancedPanel.addEventListener("toggle", syncAdvancedToggleText);
+    }
+
     form.addEventListener("submit", async (event) => {
         event.preventDefault();
         await runAnalysis(form, { saveHistory: true });
@@ -653,6 +677,4 @@ document.addEventListener("DOMContentLoaded", () => {
             await runScenarioComparison(form);
         });
     }
-
-    runAnalysis(form, { saveHistory: false });
 });

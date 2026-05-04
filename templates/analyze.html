@@ -3,6 +3,8 @@
 {% block title %}{{ t["brand.name"] }} | {{ t["title.analyze"] }}{% endblock %}
 
 {% block content %}
+{% set active_tab = active_analysis_tab or "single" %}
+<div class="analysis-page">
 <section class="section-space">
     <div class="container">
         <div class="page-heading page-heading-left mb-4">
@@ -11,223 +13,402 @@
             <p>{{ t["analyze.subtitle"] }}</p>
             <div class="action-group justify-content-start mt-3">
                 <a href="{{ localized_url('portfolio_page') }}" class="btn btn-outline-secondary">{{ t["analyze.open_portfolio"] }}</a>
-                {% if selected_portfolio_product %}
-                <span class="soft-badge">{{ t["analyze.loaded_from_portfolio"] }}: {{ selected_portfolio_product.name }}</span>
-                {% endif %}
             </div>
         </div>
 
-        <div class="row g-4 align-items-start analyze-layout">
-            <div class="col-12 analyze-input-column">
-                <div class="app-card sticky-panel input-panel">
-                    <div class="d-flex justify-content-between align-items-center mb-2">
-                        <h2 class="section-title mb-0">{{ t["analyze.input_form"] }}</h2>
-                        <span class="soft-badge">{{ t["analyze.input_badge"] }}</span>
-                    </div>
-                    <p class="text-muted mb-3">{{ t["analyze.input_subtitle"] }}</p>
-
-                    <div id="formAlert" class="alert alert-danger d-none" role="alert"></div>
-
-                    <datalist id="productSuggestions">
-                        {% for product in dataset_products %}
-                        <option value="{{ product.name }}"></option>
-                        {% endfor %}
-                    </datalist>
-
-                    <form id="analysisForm" class="row g-3">
-                        <div class="col-12">
-                            <label class="form-label" for="name">{{ t["form.product_name"] }}</label>
-                            <input class="form-control" type="text" id="name" name="name" list="productSuggestions" value="{{ default_values.name }}" required>
-                            <div class="form-helper">{{ t["form_hint.product_name"] }}</div>
-                        </div>
-                        <div class="col-12">
-                            <label class="form-label" for="category">{{ t["form.category"] }}</label>
-                            <select class="form-select" id="category" name="category" required>
-                                {% for category in categories %}
-                                <option value="{{ category }}" {% if default_values.category == category %}selected{% endif %}>{{ category }}</option>
-                                {% endfor %}
-                            </select>
-                            <div class="form-helper">{{ t["form_hint.category"] }}</div>
-                        </div>
-                        <div class="col-sm-6">
-                            <label class="form-label" for="unit_cost">{{ t["form.unit_cost"] }}</label>
-                            <input class="form-control" type="number" id="unit_cost" name="unit_cost" value="{{ default_values.unit_cost }}" min="0" step="0.01" required>
-                            <div class="form-helper">{{ t["form_hint.unit_cost"] }}</div>
-                        </div>
-                        <div class="col-sm-6">
-                            <label class="form-label" for="current_price">{{ t["form.current_price"] }}</label>
-                            <input class="form-control" type="number" id="current_price" name="current_price" value="{{ default_values.current_price }}" min="0.01" step="0.01" required>
-                            <div class="form-helper">{{ t["form_hint.current_price"] }}</div>
-                        </div>
-                        <div class="col-sm-6">
-                            <label class="form-label" for="units_sold_30d">{{ t["form.units_sold_30d"] }}</label>
-                            <input class="form-control" type="number" id="units_sold_30d" name="units_sold_30d" value="{{ default_values.units_sold_30d }}" min="1" step="1" required>
-                            <div class="form-helper">{{ t["form_hint.units_sold_30d"] }}</div>
-                        </div>
-                        <div class="col-sm-6">
-                            <label class="form-label" for="competitor_price">{{ t["form.competitor_price"] }}</label>
-                            <input class="form-control" type="number" id="competitor_price" name="competitor_price" value="{{ default_values.competitor_price }}" min="0.01" step="0.01">
-                            <div class="form-helper">{{ t["form_hint.competitor_price"] }}</div>
-                        </div>
-                        <div class="col-12">
-                            <label class="form-label" for="scenario">{{ t["form.scenario"] }}</label>
-                            <select class="form-select" id="scenario" name="scenario">
-                                <option value="LOW" {% if default_values.scenario == "LOW" %}selected{% endif %}>{{ t["scenario.LOW"] }}</option>
-                                <option value="NORMAL" {% if default_values.scenario == "NORMAL" %}selected{% endif %}>{{ t["scenario.NORMAL"] }}</option>
-                                <option value="HIGH" {% if default_values.scenario == "HIGH" %}selected{% endif %}>{{ t["scenario.HIGH"] }}</option>
-                                <option value="PROMO" {% if default_values.scenario == "PROMO" %}selected{% endif %}>{{ t["scenario.PROMO"] }}</option>
-                            </select>
-                            <div class="form-helper">{{ t["form_hint.scenario"] }}</div>
-                        </div>
-
-                        <div class="col-12">
-                            <details class="advanced-panel">
-                                <summary>{{ t["analyze.advanced_toggle"] }}</summary>
-                                <p class="text-muted small mt-2 mb-3">{{ t["analyze.advanced_subtitle"] }}</p>
-                                <div class="row g-3">
-                                    <div class="col-sm-6">
-                                        <label class="form-label" for="elasticity_override">{{ t["form.elasticity_override"] }}</label>
-                                        <input class="form-control" type="number" id="elasticity_override" name="elasticity_override" value="{{ default_values.elasticity_override }}" step="0.01">
-                                    </div>
-                                    <div class="col-sm-6">
-                                        <label class="form-label" for="return_rate_override">{{ t["form.return_rate_override"] }}</label>
-                                        <input class="form-control" type="number" id="return_rate_override" name="return_rate_override" value="{{ default_values.return_rate_override }}" min="0" max="45" step="0.1">
-                                    </div>
-                                    <div class="col-sm-6">
-                                        <label class="form-label" for="fixed_cost_allocation_override">{{ t["form.fixed_cost_allocation_override"] }}</label>
-                                        <input class="form-control" type="number" id="fixed_cost_allocation_override" name="fixed_cost_allocation_override" value="{{ default_values.fixed_cost_allocation_override }}" min="0" step="0.01">
-                                    </div>
-                                    <div class="col-sm-6">
-                                        <label class="form-label" for="target_margin_override">{{ t["form.target_margin_override"] }}</label>
-                                        <input class="form-control" type="number" id="target_margin_override" name="target_margin_override" value="{{ default_values.target_margin_override }}" min="10" max="80" step="0.1">
-                                    </div>
-                                    <div class="col-sm-6">
-                                        <label class="form-label" for="marketing_factor_override">{{ t["form.marketing_factor_override"] }}</label>
-                                        <input class="form-control" type="number" id="marketing_factor_override" name="marketing_factor_override" value="{{ default_values.marketing_factor_override }}" min="0.7" max="1.5" step="0.01">
-                                    </div>
-                                    <div class="col-sm-6">
-                                        <label class="form-label" for="inventory_constraint_override">{{ t["form.inventory_constraint_override"] }}</label>
-                                        <input class="form-control" type="number" id="inventory_constraint_override" name="inventory_constraint_override" value="{{ default_values.inventory_constraint_override }}" min="1" step="1">
-                                    </div>
-                                </div>
-                            </details>
-                        </div>
-
-                        <div class="col-12 d-grid">
-                            <button type="submit" id="analyzeBtn" class="btn btn-dark btn-lg">{{ t["analyze.run_full_analysis"] }}</button>
-                        </div>
-                    </form>
-                </div>
+        <div class="analysis-workspace">
+            <div class="analysis-tab-nav" role="tablist" aria-label="{{ t['nav.analyze'] }}">
+                <button
+                    class="analysis-tab {% if active_tab == 'single' %}active{% endif %}"
+                    id="analysis-tab-single"
+                    data-bs-toggle="tab"
+                    data-bs-target="#analysis-pane-single"
+                    type="button"
+                    role="tab"
+                    aria-controls="analysis-pane-single"
+                    aria-selected="{{ 'true' if active_tab == 'single' else 'false' }}"
+                >
+                    {{ t["analyze.tabs.single"] }}
+                </button>
+                <button
+                    class="analysis-tab {% if active_tab == 'bulk' %}active{% endif %}"
+                    id="analysis-tab-bulk"
+                    data-bs-toggle="tab"
+                    data-bs-target="#analysis-pane-bulk"
+                    type="button"
+                    role="tab"
+                    aria-controls="analysis-pane-bulk"
+                    aria-selected="{{ 'true' if active_tab == 'bulk' else 'false' }}"
+                >
+                    {{ t["analyze.tabs.bulk"] }}
+                </button>
             </div>
 
-            <div class="col-12 analyze-results-column">
-                <div class="section-header mb-3">
-                    <div>
-                        <h2 class="section-title mb-1">{{ t["analyze.results_panel"] }}</h2>
-                        <p class="text-muted mb-0">{{ t["analyze.results_subtitle"] }}</p>
-                    </div>
-                    <div class="action-group">
-                        <div id="analysisStatus" class="soft-badge">{{ t["status.ready"] }}</div>
-                        <div id="analysisConfidence" class="soft-badge">{{ t["analyze.confidence_pending"] }}</div>
-                    </div>
-                </div>
-
-                <div id="bestStrategyHighlight" class="recommendation-spotlight mb-5"></div>
-
-                <div class="app-card mb-5">
-                    <div class="section-header section-header-compact">
-                        <h3 class="section-title mb-0">{{ t["analyze.financial_impact"] }}</h3>
-                        <span class="text-muted small">{{ t["analyze.financial_impact_caption"] }}</span>
-                    </div>
-                    <div id="financialImpactGrid" class="row g-3">
-                        <div class="col-12">
-                            <div class="empty-panel">{{ t["analyze.empty_financial_impact"] }}</div>
+            <div class="tab-content">
+                <div
+                    class="tab-pane fade {% if active_tab == 'single' %}show active{% endif %}"
+                    id="analysis-pane-single"
+                    role="tabpanel"
+                    aria-labelledby="analysis-tab-single"
+                    tabindex="0"
+                >
+                    <div class="app-card analysis-primary-card">
+                        <div class="section-header mb-4">
+                            <div>
+                                <h2 class="section-title mb-1">{{ t["analyze.input_form"] }}</h2>
+                                {% if t["analyze.input_subtitle"] %}
+                                <p class="text-muted mb-0">{{ t["analyze.input_subtitle"] }}</p>
+                                {% endif %}
+                            </div>
+                            <span class="soft-badge">{{ t["analyze.input_badge"] }}</span>
                         </div>
-                    </div>
-                </div>
 
-                <div class="app-card mb-5">
-                    <div class="section-header section-header-compact">
-                        <h3 class="section-title mb-0">{{ t["analyze.strategy_comparison"] }}</h3>
-                    </div>
-                    <div class="table-responsive">
-                        <table class="table align-middle comparison-table mb-0">
-                            <thead>
-                                <tr>
-                                    <th>{{ t["table.option"] }}</th>
-                                    <th class="table-number">{{ t["table.price"] }}</th>
-                                    <th class="table-number">{{ t["table.expected_revenue"] }}</th>
-                                    <th class="table-number">{{ t["table.total_cost"] }}</th>
-                                    <th class="table-number">{{ t["table.expected_profit"] }}</th>
-                                </tr>
-                            </thead>
-                            <tbody id="strategyTableBody">
-                                <tr>
-                                    <td colspan="5" class="text-center text-muted py-4">{{ t["analyze.no_analysis_yet"] }}</td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
+                        <div id="formAlert" class="alert alert-danger d-none mb-4" role="alert"></div>
 
-                <div class="app-card mb-4">
-                    <div class="section-header section-header-compact">
-                        <h3 class="section-title mb-0">{{ t["analyze.price_optimization_curve"] }}</h3>
-                    </div>
-                    <div class="chart-wrap chart-wrap-secondary">
-                        <canvas id="priceProfitChart"></canvas>
-                    </div>
-                    <p class="text-muted small mb-0 mt-3">{{ t["analyze.price_optimization_note"] }}</p>
-                </div>
+                        <datalist id="productSuggestions">
+                            {% for product in dataset_products %}
+                            <option value="{{ product.name }}"></option>
+                            {% endfor %}
+                        </datalist>
 
-                <details class="advanced-panel analyze-advanced-panel">
-                    <summary>{{ t["analyze.advanced_details_toggle"] }}</summary>
-                    <p class="text-muted small mt-2 mb-3">{{ t["analyze.advanced_details_subtitle"] }}</p>
+                        <form id="analysisForm" class="row g-3">
+                            <div class="col-12 col-xl-6">
+                                <label class="form-label" for="name">{{ t["form.product_name"] }}</label>
+                                <input
+                                    class="form-control"
+                                    type="text"
+                                    id="name"
+                                    name="name"
+                                    list="productSuggestions"
+                                    placeholder="{{ t['form_placeholder.product_name'] }}"
+                                    required
+                                >
+                                {% if t["form_hint.product_name"] %}
+                                <div class="form-helper">{{ t["form_hint.product_name"] }}</div>
+                                {% endif %}
+                            </div>
+                            <div class="col-12 col-xl-6">
+                                <label class="form-label" for="category">{{ t["form.category"] }}</label>
+                                <select class="form-select" id="category" name="category" required>
+                                    <option value="" selected disabled>{{ t["analyze.select_category"] }}</option>
+                                    {% for category in categories %}
+                                    <option value="{{ category }}">{{ category }}</option>
+                                    {% endfor %}
+                                </select>
+                                {% if t["form_hint.category"] %}
+                                <div class="form-helper">{{ t["form_hint.category"] }}</div>
+                                {% endif %}
+                            </div>
+                            <div class="col-12 col-md-6 col-xl-3">
+                                <label class="form-label" for="unit_cost">{{ t["form.unit_cost"] }}</label>
+                                <input class="form-control" type="number" id="unit_cost" name="unit_cost" min="0" step="0.01" placeholder="" required>
+                                {% if t["form_hint.unit_cost"] %}
+                                <div class="form-helper">{{ t["form_hint.unit_cost"] }}</div>
+                                {% endif %}
+                            </div>
+                            <div class="col-12 col-md-6 col-xl-3">
+                                <label class="form-label" for="current_price">{{ t.get("analyze.field.current_price", t["form.current_price"]) }}</label>
+                                <input class="form-control" type="number" id="current_price" name="current_price" min="0.01" step="0.01" placeholder="" required>
+                                {% if t["form_hint.current_price"] %}
+                                <div class="form-helper">{{ t["form_hint.current_price"] }}</div>
+                                {% endif %}
+                            </div>
+                            <div class="col-12 col-md-6 col-xl-3">
+                                <label class="form-label" for="competitor_price">{{ t.get("analyze.field.competitor_price", t["form.competitor_price"]) }}</label>
+                                <input class="form-control" type="number" id="competitor_price" name="competitor_price" min="0.01" step="0.01" placeholder="">
+                                {% if t["form_hint.competitor_price"] %}
+                                <div class="form-helper">{{ t["form_hint.competitor_price"] }}</div>
+                                {% endif %}
+                            </div>
+                            <div class="col-12 col-md-6 col-xl-3">
+                                <label class="form-label" for="units_sold_30d">{{ t.get("analyze.field.units_sold_30d", t["form.units_sold_30d"]) }}</label>
+                                <input class="form-control" type="number" id="units_sold_30d" name="units_sold_30d" min="1" step="1" placeholder="" required>
+                                {% if t["form_hint.units_sold_30d"] %}
+                                <div class="form-helper">{{ t["form_hint.units_sold_30d"] }}</div>
+                                {% endif %}
+                            </div>
+                            <div class="col-12 col-xl-6">
+                                <label class="form-label" for="scenario">{{ t["form.scenario"] }}</label>
+                                <select class="form-select" id="scenario" name="scenario" required>
+                                    <option value="" selected disabled>{{ t["analyze.select_scenario"] }}</option>
+                                    <option value="LOW">{{ t["scenario.LOW"] }}</option>
+                                    <option value="NORMAL">{{ t["scenario.NORMAL"] }}</option>
+                                    <option value="HIGH">{{ t["scenario.HIGH"] }}</option>
+                                    <option value="PROMO">{{ t["scenario.PROMO"] }}</option>
+                                </select>
+                                {% if t["form_hint.scenario"] %}
+                                <div class="form-helper">{{ t["form_hint.scenario"] }}</div>
+                                {% endif %}
+                            </div>
 
-                    <div class="insight-banner mb-3">
-                        <strong>{{ t["analyze.helper_title"] }}</strong>
-                        <p class="mb-0">{{ t["analyze.helper_body"] }}</p>
-                    </div>
-
-                    <div class="app-card mb-3">
-                        <div class="section-header section-header-compact">
-                            <h3 class="section-title mb-0">{{ t["analyze.advanced_metrics_title"] }}</h3>
-                        </div>
-                        <div id="advancedMetricGrid" class="row g-3">
                             <div class="col-12">
-                                <div class="empty-panel">{{ t["analyze.empty_advanced_metrics"] }}</div>
+                                <div class="analysis-secondary-panel">
+                                    <div class="section-header section-header-compact">
+                                        <div>
+                                            <h3 class="section-title mb-1">{{ t["analyze.advanced_toggle"] }}</h3>
+                                            {% if t["analyze.advanced_subtitle"] %}
+                                            <p class="text-muted mb-0">{{ t["analyze.advanced_subtitle"] }}</p>
+                                            {% endif %}
+                                        </div>
+                                        <span class="soft-badge">{{ t["analyze.advanced_badge"] }}</span>
+                                    </div>
+
+                                    <details class="advanced-panel analysis-advanced-fields">
+                                        <summary>
+                                            <span
+                                                class="analysis-advanced-toggle-text"
+                                                data-open-label="{{ t['analyze.advanced_close'] }}"
+                                                data-closed-label="{{ t['analyze.advanced_open'] }}"
+                                            >
+                                                {{ t["analyze.advanced_open"] }}
+                                            </span>
+                                        </summary>
+                                        <div class="row g-3 mt-1">
+                                            <div class="col-sm-6 col-xl-4">
+                                                <label class="form-label" for="elasticity_override">{{ t["form.elasticity_override"] }}</label>
+                                                <input class="form-control" type="number" id="elasticity_override" name="elasticity_override" step="0.01" placeholder="">
+                                            </div>
+                                            <div class="col-sm-6 col-xl-4">
+                                                <label class="form-label" for="return_rate_override">{{ t["form.return_rate_override"] }}</label>
+                                                <input class="form-control" type="number" id="return_rate_override" name="return_rate_override" min="0" max="45" step="0.1" placeholder="">
+                                            </div>
+                                            <div class="col-sm-6 col-xl-4">
+                                                <label class="form-label" for="fixed_cost_allocation_override">{{ t["form.fixed_cost_allocation_override"] }}</label>
+                                                <input class="form-control" type="number" id="fixed_cost_allocation_override" name="fixed_cost_allocation_override" min="0" step="0.01" placeholder="">
+                                            </div>
+                                            <div class="col-sm-6 col-xl-4">
+                                                <label class="form-label" for="target_margin_override">{{ t["form.target_margin_override"] }}</label>
+                                                <input class="form-control" type="number" id="target_margin_override" name="target_margin_override" min="10" max="80" step="0.1" placeholder="">
+                                            </div>
+                                            <div class="col-sm-6 col-xl-4">
+                                                <label class="form-label" for="marketing_factor_override">{{ t["form.marketing_factor_override"] }}</label>
+                                                <input class="form-control" type="number" id="marketing_factor_override" name="marketing_factor_override" min="0.7" max="1.5" step="0.01" placeholder="">
+                                            </div>
+                                            <div class="col-sm-6 col-xl-4">
+                                                <label class="form-label" for="inventory_constraint_override">{{ t.get("analyze.field.inventory_constraint_override", t["form.inventory_constraint_override"]) }}</label>
+                                                <input class="form-control" type="number" id="inventory_constraint_override" name="inventory_constraint_override" min="1" step="1" placeholder="">
+                                            </div>
+                                        </div>
+                                    </details>
+                                </div>
+                            </div>
+
+                            <div class="col-12 d-grid d-sm-flex justify-content-sm-end">
+                                <button type="submit" id="analyzeBtn" class="btn btn-dark btn-lg px-sm-4">{{ t["analyze.run_full_analysis"] }}</button>
+                            </div>
+                        </form>
+                    </div>
+
+                    <div id="analysisResultsShell" class="analysis-results-shell mt-4" hidden>
+                        <div class="section-header mb-3">
+                            <div>
+                                <h2 class="section-title mb-1">{{ t["analyze.results_panel"] }}</h2>
+                                <p class="text-muted mb-0">{{ t["analyze.results_subtitle"] }}</p>
+                            </div>
+                            <div class="action-group">
+                                <div id="analysisStatus" class="soft-badge">{{ t["status.ready"] }}</div>
+                                <div id="analysisConfidence" class="soft-badge">{{ t["analyze.confidence_pending"] }}</div>
+                            </div>
+                        </div>
+
+                        <div id="bestStrategyHighlight" class="recommendation-spotlight mb-4"></div>
+
+                        <div class="row g-4">
+                            <div class="col-12">
+                                <div class="app-card">
+                                    <div class="section-header section-header-compact">
+                                        <h3 class="section-title mb-0">{{ t["analyze.financial_impact"] }}</h3>
+                                        <span class="text-muted small">{{ t["analyze.financial_impact_caption"] }}</span>
+                                    </div>
+                                    <div id="financialImpactGrid" class="row g-3"></div>
+                                </div>
+                            </div>
+
+                            <div class="col-12">
+                                <div class="app-card">
+                                    <div class="section-header section-header-compact">
+                                        <h3 class="section-title mb-0">{{ t["analyze.strategy_comparison"] }}</h3>
+                                    </div>
+                                    <div class="table-responsive">
+                                        <table class="table align-middle comparison-table mb-0">
+                                            <thead>
+                                                <tr>
+                                                    <th>{{ t["table.option"] }}</th>
+                                                    <th class="table-number">{{ t["table.price"] }}</th>
+                                                    <th class="table-number">{{ t["table.expected_revenue"] }}</th>
+                                                    <th class="table-number">{{ t["table.total_cost"] }}</th>
+                                                    <th class="table-number">{{ t["table.expected_profit"] }}</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="strategyTableBody"></tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div
+                    class="tab-pane fade {% if active_tab == 'bulk' %}show active{% endif %}"
+                    id="analysis-pane-bulk"
+                    role="tabpanel"
+                    aria-labelledby="analysis-tab-bulk"
+                    tabindex="0"
+                >
+                    {% with messages = get_flashed_messages(with_categories=true) %}
+                    {% if messages %}
+                    <div class="flash-stack mb-4">
+                        {% for category, message in messages %}
+                        {% if category == 'success' %}
+                        {% set alert_class = 'success' %}
+                        {% elif category == 'info' %}
+                        {% set alert_class = 'info' %}
+                        {% else %}
+                        {% set alert_class = 'danger' %}
+                        {% endif %}
+                        <div class="alert alert-{{ alert_class }} mb-2" role="alert">{{ message }}</div>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+                    {% endwith %}
+
+                    {% if validation_errors %}
+                    <div class="alert alert-danger mb-4" role="alert">
+                        <div class="fw-semibold mb-2">{{ t["bulk_analysis.validation_errors_title"] }}</div>
+                        <ul class="mb-0 ps-3">
+                            {% for error in validation_errors %}
+                            <li>{{ error }}</li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                    {% endif %}
+
+                    {% if bulk_results %}
+                    <div class="alert alert-success mb-4" role="alert">
+                        <div class="fw-semibold">{{ t["bulk_analysis.results_ready"] }}</div>
+                        <div>
+                            {{ t["bulk_analysis.results_summary"]
+                                .format(
+                                    processed=bulk_results.summary.processed_count,
+                                    total=bulk_results.summary.total_products,
+                                    failed=bulk_results.summary.failed_count
+                                )
+                            }}
+                        </div>
+                    </div>
+
+                    {% if bulk_results.errors %}
+                    <div class="alert alert-warning mb-4" role="alert">
+                        <div class="fw-semibold mb-2">{{ t["bulk_analysis.processing_errors_title"] }}</div>
+                        <ul class="mb-0 ps-3">
+                            {% for error in bulk_results.errors %}
+                            <li>{{ error }}</li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                    {% endif %}
+                    {% endif %}
+
+                    <div class="app-card analysis-primary-card">
+                        <div class="section-header mb-4">
+                            <div>
+                                <h2 class="section-title mb-1">{{ t["bulk_analysis.upload_title"] }}</h2>
+                                <p class="text-muted mb-0">{{ t["bulk_analysis.upload_description"] }}</p>
+                            </div>
+                            <span class="soft-badge">{{ t["bulk_analysis.upload_badge"] }}</span>
+                        </div>
+
+                        <div class="row g-4 align-items-stretch">
+                            <div class="col-12 col-xl-5">
+                                <div class="analysis-side-note h-100">
+                                    <span class="soft-badge mb-3">{{ t["bulk_analysis.template_badge"] }}</span>
+                                    <h3 class="section-title mb-2">{{ t["bulk_analysis.template_title"] }}</h3>
+                                    <p class="text-muted mb-4">{{ t["bulk_analysis.template_description"] }}</p>
+                                    <a href="{{ localized_url('bulk_analysis_template') }}" class="btn btn-outline-secondary">
+                                        {{ t["bulk_analysis.download_template"] }}
+                                    </a>
+                                </div>
+                            </div>
+
+                            <div class="col-12 col-xl-7">
+                                <form
+                                    method="post"
+                                    action="{{ localized_url('analyze_page', tab='bulk') }}"
+                                    enctype="multipart/form-data"
+                                    class="row g-3 analysis-upload-form"
+                                >
+                                    <div class="col-12">
+                                        <label class="form-label" for="product_file">{{ t["bulk_analysis.file_label"] }}</label>
+                                        <input class="form-control" type="file" id="product_file" name="product_file" accept=".xlsx" required>
+                                        <div class="form-helper">{{ t["bulk_analysis.file_helper"] }}</div>
+                                    </div>
+
+                                    <div class="col-12 d-grid d-sm-flex justify-content-sm-end">
+                                        <button type="submit" class="btn btn-dark btn-lg px-sm-4">{{ t["bulk_analysis.submit"] }}</button>
+                                    </div>
+                                </form>
                             </div>
                         </div>
                     </div>
 
-                    <div class="app-card mb-3">
-                        <div class="section-header section-header-compact">
-                            <h3 class="section-title mb-0">{{ t["analyze.assumptions_title"] }}</h3>
-                            <span class="text-muted small">{{ t["analyze.assumptions_caption"] }}</span>
+                    {% if bulk_results and bulk_results.products %}
+                    <div class="app-card mt-4">
+                        <div class="section-header mb-3">
+                            <div>
+                                <h2 class="section-title mb-1">{{ t["bulk_analysis.results_title"] }}</h2>
+                                <p class="text-muted mb-0">{{ t["bulk_analysis.results_description"] }}</p>
+                            </div>
+                            <span class="soft-badge">
+                                {{ bulk_results.summary.processed_count }} {{ t["bulk_analysis.products_analyzed"] }}
+                            </span>
                         </div>
-                        <div id="assumptionGrid" class="assumption-grid">
-                            <div class="empty-panel">{{ t["analyze.empty_assumptions"] }}</div>
-                        </div>
-                    </div>
 
-                    <div class="action-group mb-3">
-                        <button type="button" id="scenarioCompareBtn" class="btn btn-outline-secondary">{{ t["analyze.compare_all_scenarios"] }}</button>
-                    </div>
-
-                    <div class="app-card" id="scenarioComparisonCard" hidden>
-                        <div class="section-header section-header-compact">
-                            <h3 class="section-title mb-0">{{ t["analyze.scenario_comparison"] }}</h3>
-                            <span id="winningScenario" class="soft-badge">{{ t["analyze.not_generated"] }}</span>
+                        <div class="table-responsive">
+                            <table class="table align-middle comparison-table mb-0">
+                                <thead>
+                                    <tr>
+                                        <th>{{ t["bulk_analysis.table.product_id"] }}</th>
+                                        <th>{{ t["bulk_analysis.table.product_name"] }}</th>
+                                        <th>{{ t["bulk_analysis.table.category"] }}</th>
+                                        <th class="table-number">{{ t["bulk_analysis.table.current_price"] }}</th>
+                                        <th class="table-number">{{ t["bulk_analysis.table.optimal_price"] }}</th>
+                                        <th class="table-number">{{ t["bulk_analysis.table.price_change"] }}</th>
+                                        <th class="table-number">{{ t["bulk_analysis.table.expected_quantity"] }}</th>
+                                        <th class="table-number">{{ t["bulk_analysis.table.expected_revenue"] }}</th>
+                                        <th class="table-number">{{ t["bulk_analysis.table.expected_profit"] }}</th>
+                                        <th class="table-number">{{ t["bulk_analysis.table.contribution_margin"] }}</th>
+                                        <th>{{ t["bulk_analysis.table.recommended_action"] }}</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for row in bulk_results.products %}
+                                    <tr>
+                                        <td><span class="soft-badge">{{ row.product_id }}</span></td>
+                                        <td>
+                                            <div class="fw-semibold">{{ row.product_name }}</div>
+                                            <div class="table-meta">{{ t["bulk_analysis.table.source_row"] }} {{ row.row_number }}</div>
+                                        </td>
+                                        <td>{{ row.category }}</td>
+                                        <td class="table-number">{{ display_currency(row.current_price) }}</td>
+                                        <td class="table-number">{{ display_currency(row.optimal_price) }}</td>
+                                        <td class="table-number">{{ display_percent(row.price_change_percent) }}</td>
+                                        <td class="table-number">{{ display_number(row.expected_quantity) }}</td>
+                                        <td class="table-number">{{ display_currency(row.expected_revenue) }}</td>
+                                        <td class="table-number">{{ display_currency(row.expected_profit) }}</td>
+                                        <td class="table-number">{{ display_percent(row.contribution_margin) }}</td>
+                                        <td><span class="soft-badge">{{ row.recommended_action }}</span></td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
                         </div>
-                        <p class="text-muted mb-3">{{ t["analyze.scenario_comparison_caption"] }}</p>
-                        <div id="scenarioSummary" class="row g-3 mb-3"></div>
-                        <div class="chart-wrap">
-                            <canvas id="scenarioChart"></canvas>
-                        </div>
                     </div>
-                </details>
+                    {% endif %}
+                </div>
             </div>
         </div>
     </div>
 </section>
+</div>
 {% endblock %}

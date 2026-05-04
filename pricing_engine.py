@@ -72,6 +72,27 @@ def _safe_div(numerator, denominator, default=0.0):
     return numerator / denominator
 
 
+def _competitor_demand_impact(price, competitor_price):
+    if competitor_price is None or competitor_price <= 0:
+        return 1.0
+
+    ratio = price / competitor_price
+
+    if ratio <= 0.95:
+        return 1.12
+    if ratio <= 1.00:
+        return 1.06
+    if ratio <= 1.05:
+        return 0.96
+    if ratio <= 1.10:
+        return 0.88
+    if ratio <= 1.20:
+        return 0.68
+    if ratio <= 1.35:
+        return 0.52
+    return 0.40
+
+
 def _scenario_product(product, scenario_name):
     return replace(product, scenario=scenario_name)
 
@@ -292,11 +313,11 @@ def _estimate_baseline_demand(product, dataset, product_match, seasonality):
         values = [value for value in (recent_30, recent_60, recent_90) if value]
         if values:
             history_baseline = 0.5 * (recent_30 or values[0]) + 0.3 * (recent_60 or values[-1]) + 0.2 * (recent_90 or values[-1])
-            blended = history_baseline * 0.65 + user_baseline * 0.35
+            blended = user_baseline * 0.75 + history_baseline * 0.25
             return _estimate_payload(
                 blended,
                 "product_history",
-                "Baseline demand blended from product history and the latest 30-day input.",
+                "Baseline demand is primarily based on the latest 30-day user input, with product history used as a supporting adjustment.",
                 0.84 if len(product_rows) >= 180 else 0.72,
                 len(product_rows),
             )
@@ -312,7 +333,7 @@ def _estimate_baseline_demand(product, dataset, product_match, seasonality):
         return _estimate_payload(
             blended,
             "category_history",
-            "Baseline demand anchored to the latest 30-day input and category history.",
+            "Baseline demand is primarily based on the latest 30-day user input, with category history used as a supporting adjustment.",
             0.62,
             len(dataset.sales_by_category.get(product.category, [])),
         )
@@ -466,7 +487,7 @@ def _estimate_competitor_reference(product, dataset, product_match):
         return _estimate_payload(
             product.competitor_price,
             "user_input",
-            "Competitor reference price provided in the current analysis.",
+            "The user-entered competitor price was used as the market reference for recommendation comparisons.",
             0.92,
             1,
         )
@@ -652,12 +673,24 @@ def _evaluate_price(product, dataset, assumptions, context, price, strategy_name
     fixed_cost = assumptions["fixed_cost_allocation"]["value"]
     packaging_cost = context["packaging_cost"]
 
-    price_effect = (max(price, 0.01) / max(product.current_price, 0.01)) ** elasticity
+    price_effect = (max(price, 0.01) / max(product.current_price, 0.01)) ** (elasticity * 1.25)
     competitor_gap = _safe_div((competitor_reference * scenario["competitor_multiplier"]) - price, competitor_reference, 0.0)
     competitor_factor = _clamp(1.0 + competitor_gap * competitor_sensitivity, 0.84, 1.16)
+    competitor_impact = _competitor_demand_impact(
+        price,
+        product.competitor_price if product.competitor_price is not None else competitor_reference,
+    )
     scenario_factor = scenario["demand_multiplier"]
 
-    demand = baseline_demand * price_effect * seasonality_factor * competitor_factor * scenario_factor * marketing_factor
+    demand = (
+        baseline_demand
+        * price_effect
+        * seasonality_factor
+        * competitor_factor
+        * competitor_impact
+        * scenario_factor
+        * marketing_factor
+    )
     if product.inventory_constraint_override is not None:
         demand = min(demand, product.inventory_constraint_override)
 
@@ -689,8 +722,10 @@ def _evaluate_price(product, dataset, assumptions, context, price, strategy_name
         risk_score += 10
     if assumptions["baseline_demand"]["confidence_level"] == "Low":
         risk_score += 8
-    if competitor_gap < -0.08:
-        risk_score += 12
+    if competitor_gap < -0.10:
+        risk_score += 10
+    if competitor_gap > 0.15:
+        risk_score += 6
     if product.inventory_constraint_override is not None and demand >= product.inventory_constraint_override * 0.95:
         risk_score += 8
     if profit <= 0:
@@ -772,6 +807,15 @@ def _apply_requested_price_bounds(lower_bound, upper_bound, price_bounds):
 
 def _price_bounds(product, dataset, assumptions, price_bounds=None):
     competitor_reference = assumptions["competitor_reference"]["value"]
+    if product.competitor_price is not None:
+        market_floor = product.competitor_price * 0.90
+        market_ceiling = product.competitor_price * 1.15
+        floor = max(product.unit_cost * 1.35, product.current_price * 0.82, market_floor, 8.0)
+        ceiling = market_ceiling
+        if floor >= ceiling:
+            ceiling = floor * 1.08
+        return _apply_requested_price_bounds(floor, ceiling, price_bounds)
+
     floor = max(product.unit_cost * 1.35, product.current_price * 0.82, 8.0)
     if competitor_reference:
         floor = max(floor, competitor_reference * 0.78)
@@ -862,10 +906,20 @@ def _strategy_prices(product, dataset, assumptions, context, price_bounds=None):
 
 
 def _build_recommendation_reasons(best, current_option, assumptions, optimizer):
+    competitor_reason = (
+        f"Projected demand lands at {best['demand']} units with a competitor gap of {best['price_gap_vs_competitor']}%."
+    )
+    if assumptions["competitor_reference"]["source"] == "user_input":
+        competitor_reason = (
+            "The user-entered competitor price was used as the market reference, and the recommended price "
+            f"was evaluated against it. The projected competitor gap is {best['price_gap_vs_competitor']}%, "
+            "which informs market positioning and competitor-related risk."
+        )
+
     reasons = [
         f"This option produced the highest projected profit across {len(optimizer['candidates'])} candidate prices.",
         f"Projected profit margin is {best['profit_margin']}% against a target of {best['target_margin']}%.",
-        f"Projected demand lands at {best['demand']} units with a competitor gap of {best['price_gap_vs_competitor']}%.",
+        competitor_reason,
         f"Confidence is {assumptions['baseline_demand']['confidence_level']} to {assumptions['elasticity']['confidence_level']} across the core estimates.",
     ]
     if current_option:

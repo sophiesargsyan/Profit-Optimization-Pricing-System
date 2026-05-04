@@ -895,15 +895,34 @@ def render_auth_page(
     )
 
 
-def render_bulk_analysis_page(validation_errors=None, bulk_results=None, status=200):
+def _normalize_analysis_tab(value, default="single"):
+    normalized = str(value or "").strip().lower()
+    if normalized == "bulk":
+        return "bulk"
+    return default
+
+
+def render_analysis_page(active_tab="single", validation_errors=None, bulk_results=None, status=200):
     return (
         render_template(
-            "bulk_analysis.html",
-            page_name="bulk-analysis",
+            "analyze.html",
+            page_name="analyze",
+            active_analysis_tab=_normalize_analysis_tab(active_tab),
             validation_errors=validation_errors or [],
             bulk_results=bulk_results,
+            categories=sorted(CATEGORY_PROFILES),
+            dataset_products=load_business_dataset().products,
         ),
         status,
+    )
+
+
+def render_bulk_analysis_page(validation_errors=None, bulk_results=None, status=200):
+    return render_analysis_page(
+        active_tab="bulk",
+        validation_errors=validation_errors,
+        bulk_results=bulk_results,
+        status=status,
     )
 
 
@@ -1354,69 +1373,67 @@ def index():
     return render_template("index.html", page_name="home")
 
 
-@app.route("/analyze")
+def _handle_bulk_analysis_submission():
+    uploaded_file = request.files.get("product_file")
+    if not uploaded_file or not uploaded_file.filename:
+        return render_analysis_page(
+            active_tab="bulk",
+            validation_errors=[
+                translated_message(
+                    "bulk_analysis.upload_required",
+                    "Choose an .xlsx file before starting bulk analysis.",
+                )
+            ],
+            status=400,
+        )
+
+    if Path(uploaded_file.filename).suffix.lower() != ".xlsx":
+        return render_analysis_page(
+            active_tab="bulk",
+            validation_errors=[
+                translated_message(
+                    "bulk_analysis.upload_invalid",
+                    "Please upload an .xlsx file.",
+                )
+            ],
+            status=400,
+        )
+
+    uploaded_content = uploaded_file.read()
+    try:
+        validation_result = validate_bulk_analysis_workbook(BytesIO(uploaded_content))
+    except ValueError as exc:
+        validation_result = BulkValidationResult(errors=[str(exc)])
+
+    if validation_result.errors:
+        return render_analysis_page(
+            active_tab="bulk",
+            validation_errors=validation_result.errors,
+            status=400,
+        )
+
+    bulk_products = parse_bulk_analysis_products(uploaded_content)
+    bulk_results = process_bulk_analysis_products(bulk_products)
+    return render_analysis_page(active_tab="bulk", bulk_results=bulk_results)
+
+
+@app.route("/analyze", methods=["GET", "POST"])
 @login_required
 def analyze_page():
-    product_id = request.args.get("product_id", "").strip()
-    selected_portfolio_product = (
-        get_portfolio_product(get_portfolio_file(), product_id) if product_id else None
-    )
-    default_values = (
-        _portfolio_form_values(selected_portfolio_product)
-        if selected_portfolio_product
-        else dict(DEFAULT_PRODUCT)
-    )
-    return render_template(
-        "analyze.html",
-        page_name="analyze",
-        default_values=default_values,
-        selected_portfolio_product=selected_portfolio_product,
-        categories=sorted(CATEGORY_PROFILES),
-        dataset_products=load_business_dataset().products,
-    )
+    if request.method == "POST":
+        return _handle_bulk_analysis_submission()
+
+    active_tab = _normalize_analysis_tab(request.args.get("tab"), default="single")
+    return render_analysis_page(active_tab=active_tab)
 
 
 @app.route("/bulk-analysis", methods=["GET", "POST"])
 @login_required
 def bulk_analysis_page():
     if request.method == "POST":
-        uploaded_file = request.files.get("product_file")
-        if not uploaded_file or not uploaded_file.filename:
-            return render_bulk_analysis_page(
-                validation_errors=[
-                    translated_message(
-                        "bulk_analysis.upload_required",
-                        "Choose an .xlsx file before starting bulk analysis.",
-                    )
-                ],
-                status=400,
-            )
+        return _handle_bulk_analysis_submission()
 
-        if Path(uploaded_file.filename).suffix.lower() != ".xlsx":
-            return render_bulk_analysis_page(
-                validation_errors=[
-                    translated_message(
-                        "bulk_analysis.upload_invalid",
-                        "Please upload an .xlsx file.",
-                    )
-                ],
-                status=400,
-            )
-
-        uploaded_content = uploaded_file.read()
-        try:
-            validation_result = validate_bulk_analysis_workbook(BytesIO(uploaded_content))
-        except ValueError as exc:
-            validation_result = BulkValidationResult(errors=[str(exc)])
-
-        if validation_result.errors:
-            return render_bulk_analysis_page(validation_errors=validation_result.errors, status=400)
-
-        bulk_products = parse_bulk_analysis_products(uploaded_content)
-        bulk_results = process_bulk_analysis_products(bulk_products)
-        return render_bulk_analysis_page(bulk_results=bulk_results)
-
-    return render_bulk_analysis_page()
+    return render_analysis_page(active_tab="bulk")
 
 
 @app.route("/bulk-analysis/template.xlsx")

@@ -24,7 +24,6 @@
                         {% if is_authenticated %}
                         <li class="nav-item"><a class="nav-link {% if page_name == 'home' %}active{% endif %}" href="{{ localized_url('index') }}">{{ t["nav.home"] }}</a></li>
                         <li class="nav-item"><a class="nav-link {% if page_name == 'analyze' %}active{% endif %}" href="{{ localized_url('analyze_page') }}">{{ t["nav.analyze"] }}</a></li>
-                        <li class="nav-item"><a class="nav-link {% if page_name == 'bulk-analysis' %}active{% endif %}" href="{{ localized_url('bulk_analysis_page') }}">{{ t["nav.bulk_analysis"] }}</a></li>
                         <li class="nav-item"><a class="nav-link {% if page_name == 'portfolio' %}active{% endif %}" href="{{ localized_url('portfolio_page') }}">{{ t["nav.portfolio"] }}</a></li>
                         <li class="nav-item"><a class="nav-link {% if page_name == 'dashboard' %}active{% endif %}" href="{{ localized_url('dashboard_page') }}">{{ t["nav.dashboard"] }}</a></li>
                         <li class="nav-item"><a class="nav-link {% if page_name == 'about' %}active{% endif %}" href="{{ localized_url('about_page') }}">{{ t["nav.about"] }}</a></li>
