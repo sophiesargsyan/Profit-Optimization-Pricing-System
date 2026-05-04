@@ -6,226 +6,127 @@
 {% set best_product = portfolio_summary.best_performing_product %}
 {% set weakest_product = portfolio_summary.weakest_performing_product %}
 {% set highest_profit_product = portfolio_summary.highest_profit_product %}
-<section class="section-space">
-    <div class="container">
-        <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
-            <div class="page-heading page-heading-left mb-0">
+<div class="analysis-page portfolio-page">
+    <section class="section-space">
+        <div class="container">
+            <div class="page-heading page-heading-left mb-4">
                 <span class="eyebrow-pill">{{ t["portfolio.eyebrow"] }}</span>
                 <h1>{{ t["portfolio.title"] }}</h1>
                 <p>{{ t["portfolio.subtitle"] }}</p>
+                <div class="action-group justify-content-start mt-3">
+                    <a href="{{ localized_url('portfolio_export_csv') }}" class="btn btn-outline-secondary">{{ t["portfolio.export_comparison_csv"] }}</a>
+                    <a href="{{ localized_url('history_export_csv') }}" class="btn btn-outline-secondary">{{ t["portfolio.export_history_csv"] }}</a>
+                    <a href="{{ localized_url('history_export_json') }}" class="btn btn-dark">{{ t["portfolio.export_history_json"] }}</a>
+                </div>
             </div>
-            <div class="action-group">
-                <a href="{{ localized_url('portfolio_export_csv') }}" class="btn btn-outline-secondary">{{ t["portfolio.export_comparison_csv"] }}</a>
-                <a href="{{ localized_url('history_export_csv') }}" class="btn btn-outline-secondary">{{ t["portfolio.export_history_csv"] }}</a>
-                <a href="{{ localized_url('history_export_json') }}" class="btn btn-dark">{{ t["portfolio.export_history_json"] }}</a>
-            </div>
-        </div>
 
-        {% with messages = get_flashed_messages(with_categories=true) %}
-        {% if messages %}
-        <div class="flash-stack mb-4">
-            {% for category, message in messages %}
-            <div class="alert alert-{{ 'success' if category == 'success' else 'danger' }} mb-2" role="alert">{{ message }}</div>
-            {% endfor %}
-        </div>
-        {% endif %}
-        {% endwith %}
+            {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+            <div class="flash-stack mb-4">
+                {% for category, message in messages %}
+                <div class="alert alert-{{ 'success' if category == 'success' else 'danger' }} mb-2" role="alert">{{ message }}</div>
+                {% endfor %}
+            </div>
+            {% endif %}
+            {% endwith %}
 
-        {% if error_message %}
-        <div class="alert alert-danger mb-4" role="alert">{{ error_message }}</div>
-        {% endif %}
+            {% if error_message %}
+            <div class="alert alert-danger mb-4" role="alert">{{ error_message }}</div>
+            {% endif %}
 
-        <div class="section-header mb-3">
-            <div>
-                <h2 class="section-title mb-1">{{ t["portfolio.summary.title"] }}</h2>
-                <p class="text-muted mb-0">{{ t["portfolio.summary.subtitle"] }}</p>
-            </div>
-            <div class="action-group">
-                <span class="soft-badge">{{ t["portfolio.summary.total_products"] }}: {{ portfolio_summary.total_products }}</span>
-                <span class="soft-badge">{{ t["portfolio.summary.total_profit"] }}: {{ display_currency(portfolio_summary.total_profit) }}</span>
-            </div>
-        </div>
-
-        <div class="row g-3 mb-3">
-            <div class="col-md-6 col-xl-3">
-                <div class="metric-card summary-card">
-                    <span class="metric-label">{{ t["portfolio.summary.total_revenue"] }}</span>
-                    <div class="metric-value">{{ display_currency(portfolio_summary.total_revenue) }}</div>
-                    <p class="metric-note">{{ t["portfolio.summary.total_revenue_note"] }}</p>
-                </div>
-            </div>
-            <div class="col-md-6 col-xl-3">
-                <div class="metric-card summary-card">
-                    <span class="metric-label">{{ t["portfolio.summary.total_cost"] }}</span>
-                    <div class="metric-value">{{ display_currency(portfolio_summary.total_cost) }}</div>
-                    <p class="metric-note">{{ t["portfolio.summary.total_cost_note"] }}</p>
-                </div>
-            </div>
-            <div class="col-md-6 col-xl-3">
-                <div class="metric-card summary-card summary-card-primary">
-                    <span class="metric-label">{{ t["portfolio.summary.total_profit"] }}</span>
-                    <div class="metric-value">{{ display_currency(portfolio_summary.total_profit) }}</div>
-                    <p class="metric-note">{{ t["portfolio.summary.total_profit_note"] }}</p>
-                </div>
-            </div>
-            <div class="col-md-6 col-xl-3">
-                <div class="metric-card summary-card">
-                    <span class="metric-label">{{ t["portfolio.summary.average_margin"] }}</span>
-                    <div class="metric-value">{{ display_percent(portfolio_summary.average_margin) }}</div>
-                    <p class="metric-note">{{ t["portfolio.summary.average_margin_note"] }}</p>
-                </div>
-            </div>
-        </div>
-
-        <div class="row g-3 mb-4">
-            <div class="col-md-6 col-xl-3">
-                <div class="metric-card summary-card summary-card-primary">
-                    <span class="metric-label">{{ t["portfolio.summary.best_product"] }}</span>
-                    <div class="metric-value">{{ best_product.product_name if best_product else t["common.not_available"] }}</div>
-                    <p class="metric-note">
-                        {% if best_product %}
-                        {{ t["table.product_profit"] }}: {{ display_currency(best_product.product_profit) }} | {{ t["table.contribution_share"] }}: {{ display_percent(best_product.profit_contribution_share) }}
-                        {% else %}
-                        {{ t["portfolio.summary.empty_note"] }}
-                        {% endif %}
-                    </p>
-                </div>
-            </div>
-            <div class="col-md-6 col-xl-3">
-                <div class="metric-card summary-card">
-                    <span class="metric-label">{{ t["portfolio.summary.weakest_product"] }}</span>
-                    <div class="metric-value">{{ weakest_product.product_name if weakest_product else t["common.not_available"] }}</div>
-                    <p class="metric-note">
-                        {% if weakest_product %}
-                        {{ t["table.product_profit"] }}: {{ display_currency(weakest_product.product_profit) }} | {{ t["table.contribution_share"] }}: {{ display_percent(weakest_product.profit_contribution_share) }}
-                        {% else %}
-                        {{ t["portfolio.summary.empty_note"] }}
-                        {% endif %}
-                    </p>
-                </div>
-            </div>
-            <div class="col-md-6 col-xl-3">
-                <div class="metric-card summary-card">
-                    <span class="metric-label">{{ t["portfolio.summary.highest_profit_product"] }}</span>
-                    <div class="metric-value">{{ highest_profit_product.product_name if highest_profit_product else t["common.not_available"] }}</div>
-                    <p class="metric-note">
-                        {% if highest_profit_product %}
-                        {{ t["table.product_profit"] }}: {{ display_currency(highest_profit_product.product_profit) }} | {{ t["table.contribution_share"] }}: {{ display_percent(highest_profit_product.profit_contribution_share) }}
-                        {% else %}
-                        {{ t["portfolio.summary.empty_note"] }}
-                        {% endif %}
-                    </p>
-                </div>
-            </div>
-            <div class="col-md-6 col-xl-3">
-                <div class="metric-card summary-card">
-                    <span class="metric-label">{{ t["portfolio.summary.high_confidence"] }}</span>
-                    <div class="metric-value">{{ portfolio_summary.high_confidence_products }}</div>
-                    <p class="metric-note">{{ t["portfolio.summary.high_confidence_note"] }}</p>
-                </div>
-            </div>
-        </div>
-
-        <div class="row g-4 align-items-start">
-            <div class="col-lg-4">
-                <div class="app-card sticky-panel">
-                    <div class="section-header section-header-compact">
-                        <h2 class="section-title mb-0">
-                            {% if editing_product %}{{ t["portfolio.form.title_edit"] }}{% else %}{{ t["portfolio.form.title_add"] }}{% endif %}
-                        </h2>
-                        <span class="soft-badge">
-                            {% if editing_product %}{{ t["portfolio.form.badge_edit"] }}{% else %}{{ t["portfolio.form.badge_add"] }}{% endif %}
-                        </span>
+            <div class="analysis-workspace">
+                <div class="section-header mb-3">
+                    <div>
+                        <h2 class="section-title mb-1">{{ t["portfolio.summary.title"] }}</h2>
+                        <p class="text-muted mb-0">{{ t["portfolio.summary.subtitle"] }}</p>
                     </div>
-                    <p class="text-muted mb-3">{{ t["portfolio.form.subtitle"] }}</p>
-
-                    <form method="post" action="{{ localized_url('portfolio_save') }}" class="row g-3">
-                        <input type="hidden" name="product_id" value="{{ editing_product.id if editing_product else '' }}">
-
-                        <div class="col-12">
-                            <label class="form-label" for="name">{{ t["form.product_name"] }}</label>
-                            <input class="form-control" type="text" id="name" name="name" value="{{ form_values.name or '' }}" required>
-                        </div>
-                        <div class="col-12">
-                            <label class="form-label" for="category">{{ t["form.category"] }}</label>
-                            <select class="form-select" id="category" name="category" required>
-                                {% for category in categories %}
-                                <option value="{{ category }}" {% if form_values.category == category %}selected{% endif %}>{{ category }}</option>
-                                {% endfor %}
-                            </select>
-                        </div>
-                        <div class="col-sm-6">
-                            <label class="form-label" for="unit_cost">{{ t["form.unit_cost"] }}</label>
-                            <input class="form-control" type="number" id="unit_cost" name="unit_cost" value="{{ form_values.unit_cost or '' }}" min="0" step="0.01" required>
-                        </div>
-                        <div class="col-sm-6">
-                            <label class="form-label" for="current_price">{{ t["form.current_price"] }}</label>
-                            <input class="form-control" type="number" id="current_price" name="current_price" value="{{ form_values.current_price or '' }}" min="0.01" step="0.01" required>
-                        </div>
-                        <div class="col-sm-6">
-                            <label class="form-label" for="units_sold_30d">{{ t["form.units_sold_30d"] }}</label>
-                            <input class="form-control" type="number" id="units_sold_30d" name="units_sold_30d" value="{{ form_values.units_sold_30d or '' }}" min="1" step="1" required>
-                        </div>
-                        <div class="col-sm-6">
-                            <label class="form-label" for="competitor_price">{{ t["form.competitor_price"] }}</label>
-                            <input class="form-control" type="number" id="competitor_price" name="competitor_price" value="{{ form_values.competitor_price or '' }}" min="0.01" step="0.01">
-                        </div>
-                        <div class="col-12">
-                            <label class="form-label" for="scenario">{{ t["form.scenario"] }}</label>
-                            <select class="form-select" id="scenario" name="scenario">
-                                <option value="LOW" {% if form_values.scenario == "LOW" %}selected{% endif %}>{{ t["scenario.LOW"] }}</option>
-                                <option value="NORMAL" {% if form_values.scenario == "NORMAL" %}selected{% endif %}>{{ t["scenario.NORMAL"] }}</option>
-                                <option value="HIGH" {% if form_values.scenario == "HIGH" %}selected{% endif %}>{{ t["scenario.HIGH"] }}</option>
-                                <option value="PROMO" {% if form_values.scenario == "PROMO" %}selected{% endif %}>{{ t["scenario.PROMO"] }}</option>
-                            </select>
-                        </div>
-
-                        <div class="col-12">
-                            <details class="advanced-panel">
-                                <summary>{{ t["analyze.advanced_toggle"] }}</summary>
-                                <div class="row g-3 mt-1">
-                                    <div class="col-sm-6">
-                                        <label class="form-label" for="elasticity_override">{{ t["form.elasticity_override"] }}</label>
-                                        <input class="form-control" type="number" id="elasticity_override" name="elasticity_override" value="{{ form_values.elasticity_override or '' }}" step="0.01">
-                                    </div>
-                                    <div class="col-sm-6">
-                                        <label class="form-label" for="return_rate_override">{{ t["form.return_rate_override"] }}</label>
-                                        <input class="form-control" type="number" id="return_rate_override" name="return_rate_override" value="{{ form_values.return_rate_override or '' }}" min="0" max="45" step="0.1">
-                                    </div>
-                                    <div class="col-sm-6">
-                                        <label class="form-label" for="fixed_cost_allocation_override">{{ t["form.fixed_cost_allocation_override"] }}</label>
-                                        <input class="form-control" type="number" id="fixed_cost_allocation_override" name="fixed_cost_allocation_override" value="{{ form_values.fixed_cost_allocation_override or '' }}" min="0" step="0.01">
-                                    </div>
-                                    <div class="col-sm-6">
-                                        <label class="form-label" for="target_margin_override">{{ t["form.target_margin_override"] }}</label>
-                                        <input class="form-control" type="number" id="target_margin_override" name="target_margin_override" value="{{ form_values.target_margin_override or '' }}" min="10" max="80" step="0.1">
-                                    </div>
-                                    <div class="col-sm-6">
-                                        <label class="form-label" for="marketing_factor_override">{{ t["form.marketing_factor_override"] }}</label>
-                                        <input class="form-control" type="number" id="marketing_factor_override" name="marketing_factor_override" value="{{ form_values.marketing_factor_override or '' }}" min="0.7" max="1.5" step="0.01">
-                                    </div>
-                                    <div class="col-sm-6">
-                                        <label class="form-label" for="inventory_constraint_override">{{ t["form.inventory_constraint_override"] }}</label>
-                                        <input class="form-control" type="number" id="inventory_constraint_override" name="inventory_constraint_override" value="{{ form_values.inventory_constraint_override or '' }}" min="1" step="1">
-                                    </div>
-                                </div>
-                            </details>
-                        </div>
-
-                        <div class="col-12 d-grid gap-2">
-                            <button type="submit" class="btn btn-dark btn-lg">
-                                {% if editing_product %}{{ t["portfolio.form.update"] }}{% else %}{{ t["portfolio.form.save"] }}{% endif %}
-                            </button>
-                            {% if editing_product %}
-                            <a href="{{ localized_url('portfolio_page') }}" class="btn btn-outline-secondary">{{ t["portfolio.form.cancel_edit"] }}</a>
-                            {% endif %}
-                        </div>
-                    </form>
+                    <div class="action-group">
+                        <span class="soft-badge">{{ t["portfolio.summary.total_products"] }}: {{ portfolio_summary.total_products }}</span>
+                        <span class="soft-badge">{{ t["portfolio.summary.total_profit"] }}: {{ display_currency(portfolio_summary.total_profit) }}</span>
+                    </div>
                 </div>
-            </div>
 
-            <div class="col-lg-8">
-                <div class="app-card mb-4">
+                <div class="row g-3 mb-3">
+                    <div class="col-md-6 col-xl-3">
+                        <div class="metric-card summary-card">
+                            <span class="metric-label">{{ t["portfolio.summary.total_revenue"] }}</span>
+                            <div class="metric-value">{{ display_currency(portfolio_summary.total_revenue) }}</div>
+                            <p class="metric-note">{{ t["portfolio.summary.total_revenue_note"] }}</p>
+                        </div>
+                    </div>
+                    <div class="col-md-6 col-xl-3">
+                        <div class="metric-card summary-card">
+                            <span class="metric-label">{{ t["portfolio.summary.total_cost"] }}</span>
+                            <div class="metric-value">{{ display_currency(portfolio_summary.total_cost) }}</div>
+                            <p class="metric-note">{{ t["portfolio.summary.total_cost_note"] }}</p>
+                        </div>
+                    </div>
+                    <div class="col-md-6 col-xl-3">
+                        <div class="metric-card summary-card summary-card-primary">
+                            <span class="metric-label">{{ t["portfolio.summary.total_profit"] }}</span>
+                            <div class="metric-value">{{ display_currency(portfolio_summary.total_profit) }}</div>
+                            <p class="metric-note">{{ t["portfolio.summary.total_profit_note"] }}</p>
+                        </div>
+                    </div>
+                    <div class="col-md-6 col-xl-3">
+                        <div class="metric-card summary-card">
+                            <span class="metric-label">{{ t["portfolio.summary.average_margin"] }}</span>
+                            <div class="metric-value">{{ display_percent(portfolio_summary.average_margin) }}</div>
+                            <p class="metric-note">{{ t["portfolio.summary.average_margin_note"] }}</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row g-3 mb-4">
+                    <div class="col-md-6 col-xl-3">
+                        <div class="metric-card summary-card summary-card-primary">
+                            <span class="metric-label">{{ t["portfolio.summary.best_product"] }}</span>
+                            <div class="metric-value">{{ best_product.product_name if best_product else t["common.not_available"] }}</div>
+                            <p class="metric-note">
+                                {% if best_product %}
+                                {{ t["table.product_profit"] }}: {{ display_currency(best_product.product_profit) }} | {{ t["table.contribution_share"] }}: {{ display_percent(best_product.profit_contribution_share) }}
+                                {% else %}
+                                {{ t["portfolio.summary.empty_note"] }}
+                                {% endif %}
+                            </p>
+                        </div>
+                    </div>
+                    <div class="col-md-6 col-xl-3">
+                        <div class="metric-card summary-card">
+                            <span class="metric-label">{{ t["portfolio.summary.weakest_product"] }}</span>
+                            <div class="metric-value">{{ weakest_product.product_name if weakest_product else t["common.not_available"] }}</div>
+                            <p class="metric-note">
+                                {% if weakest_product %}
+                                {{ t["table.product_profit"] }}: {{ display_currency(weakest_product.product_profit) }} | {{ t["table.contribution_share"] }}: {{ display_percent(weakest_product.profit_contribution_share) }}
+                                {% else %}
+                                {{ t["portfolio.summary.empty_note"] }}
+                                {% endif %}
+                            </p>
+                        </div>
+                    </div>
+                    <div class="col-md-6 col-xl-3">
+                        <div class="metric-card summary-card">
+                            <span class="metric-label">{{ t["portfolio.summary.highest_profit_product"] }}</span>
+                            <div class="metric-value">{{ highest_profit_product.product_name if highest_profit_product else t["common.not_available"] }}</div>
+                            <p class="metric-note">
+                                {% if highest_profit_product %}
+                                {{ t["table.product_profit"] }}: {{ display_currency(highest_profit_product.product_profit) }} | {{ t["table.contribution_share"] }}: {{ display_percent(highest_profit_product.profit_contribution_share) }}
+                                {% else %}
+                                {{ t["portfolio.summary.empty_note"] }}
+                                {% endif %}
+                            </p>
+                        </div>
+                    </div>
+                    <div class="col-md-6 col-xl-3">
+                        <div class="metric-card summary-card">
+                            <span class="metric-label">{{ t["portfolio.summary.high_confidence"] }}</span>
+                            <div class="metric-value">{{ portfolio_summary.high_confidence_products }}</div>
+                            <p class="metric-note">{{ t["portfolio.summary.high_confidence_note"] }}</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="app-card">
                     <div class="section-header mb-3">
                         <div>
                             <h2 class="section-title mb-1">{{ t["portfolio.list.title"] }}</h2>
@@ -267,7 +168,6 @@
                                     <td>
                                         <div class="table-actions">
                                             <a href="{{ localized_url('analyze_page', product_id=row.product_id) }}" class="btn btn-sm btn-dark">{{ t["portfolio.actions.analyze"] }}</a>
-                                            <a href="{{ localized_url('portfolio_page', edit=row.product_id) }}" class="btn btn-sm btn-outline-secondary">{{ t["portfolio.actions.edit"] }}</a>
                                             <form method="post" action="{{ localized_url('portfolio_delete', product_id=row.product_id) }}" onsubmit="return confirm('{{ t["portfolio.messages.delete_confirm"] }}')">
                                                 <button type="submit" class="btn btn-sm btn-outline-danger">{{ t["portfolio.actions.delete"] }}</button>
                                             </form>
@@ -282,107 +182,8 @@
                     <div class="empty-state empty-state-block">{{ t["portfolio.list.empty"] }}</div>
                     {% endif %}
                 </div>
-
-                <div class="app-card mb-4">
-                    <div class="section-header mb-3">
-                        <div>
-                            <h2 class="section-title mb-1">{{ t["portfolio.comparison.title"] }}</h2>
-                            <p class="text-muted mb-0">{{ t["portfolio.comparison.subtitle"] }}</p>
-                        </div>
-                        <span class="soft-badge">{{ t["portfolio.comparison.badge"] }}</span>
-                    </div>
-
-                    {% if comparison_rows %}
-                    <div class="table-responsive">
-                        <table class="table align-middle comparison-table mb-0">
-                            <thead>
-                                <tr>
-                                    <th>{{ t["table.product"] }}</th>
-                                    <th class="table-number">{{ t["table.base_price"] }}</th>
-                                    <th class="table-number">{{ t["table.recommended_price"] }}</th>
-                                    <th class="table-number">{{ t["table.expected_revenue"] }}</th>
-                                    <th class="table-number">{{ t["table.total_cost"] }}</th>
-                                    <th class="table-number">{{ t["table.product_profit"] }}</th>
-                                    <th class="table-number">{{ t["table.margin"] }}</th>
-                                    <th class="table-number">{{ t["table.contribution_share"] }}</th>
-                                    <th>{{ t["table.option"] }}</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for row in comparison_rows %}
-                                <tr>
-                                    <td>
-                                        <div class="fw-semibold">{{ row.product_name }}</div>
-                                        <div class="table-meta">{{ t["scenario." ~ row.scenario] }}</div>
-                                    </td>
-                                    <td class="table-number">{{ display_currency(row.current_price) }}</td>
-                                    <td class="table-number">{{ display_currency(row.recommended_price) }}</td>
-                                    <td class="table-number">{{ display_currency(row.portfolio_revenue) }}</td>
-                                    <td class="table-number">{{ display_currency(row.portfolio_cost) }}</td>
-                                    <td class="table-number">{{ display_currency(row.product_profit) }}</td>
-                                    <td class="table-number">{{ display_percent(row.portfolio_margin) }}</td>
-                                    <td class="table-number">{{ display_percent(row.profit_contribution_share) }}</td>
-                                    <td>{{ t["strategy." ~ row.recommended_strategy] }}</td>
-                                </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                    {% else %}
-                    <div class="empty-state empty-state-block">{{ t["portfolio.comparison.empty"] }}</div>
-                    {% endif %}
-                </div>
-
-                <div class="app-card">
-                    <div class="section-header mb-3">
-                        <div>
-                            <h2 class="section-title mb-1">{{ t["portfolio.history.title"] }}</h2>
-                            <p class="text-muted mb-0">{{ t["portfolio.history.subtitle"] }}</p>
-                        </div>
-                        <span class="soft-badge">{{ portfolio_summary.history_entries }} {{ t["portfolio.history.entries"] }}</span>
-                    </div>
-
-                    {% if history_entries %}
-                    <div class="table-responsive">
-                        <table class="table align-middle comparison-table mb-0">
-                            <thead>
-                                <tr>
-                                    <th>{{ t["table.timestamp"] }}</th>
-                                    <th>{{ t["table.product"] }}</th>
-                                    <th>{{ t["table.scenario"] }}</th>
-                                    <th>{{ t["table.option"] }}</th>
-                                    <th class="table-number">{{ t["table.recommended_price"] }}</th>
-                                    <th class="table-number">{{ t["table.expected_profit"] }}</th>
-                                    <th>{{ t["table.confidence"] }}</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for entry in history_entries %}
-                                <tr>
-                                    <td>{{ entry.timestamp|replace('T', ' ') }}</td>
-                                    <td>{{ entry.product_name }}</td>
-                                    <td>{{ t["scenario." ~ entry.selected_scenario] }}</td>
-                                    <td>{{ t["strategy." ~ entry.recommended_strategy] }}</td>
-                                    <td class="table-number">{{ display_currency(entry.recommended_price) }}</td>
-                                    <td class="table-number">{{ display_currency(entry.expected_profit) }}</td>
-                                    <td>
-                                        {% if entry.confidence_level %}
-                                        <span class="confidence-pill confidence-{{ entry.confidence_level|lower }}">{{ t["confidence." ~ entry.confidence_level] }}</span>
-                                        {% else %}
-                                        {{ t["common.not_available"] }}
-                                        {% endif %}
-                                    </td>
-                                </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                    {% else %}
-                    <div class="empty-state empty-state-block">{{ t["portfolio.history.empty"] }}</div>
-                    {% endif %}
-                </div>
             </div>
         </div>
-    </div>
-</section>
+    </section>
+</div>
 {% endblock %}

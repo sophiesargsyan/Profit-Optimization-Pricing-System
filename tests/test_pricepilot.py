@@ -12,6 +12,7 @@ from app import (
     app,
     build_bulk_analysis_template,
     get_translations,
+    parse_bulk_analysis_products,
     validate_bulk_analysis_workbook,
 )
 from data_repository import load_business_dataset
@@ -336,6 +337,10 @@ class FlaskAppTests(unittest.TestCase):
         payload.update(overrides)
         return client.post("/sign-in?lang=en", data=payload)
 
+    def _user_by_email(self, email):
+        normalized_email = email.strip().lower()
+        return next(user for user in load_users(self.users_file) if user["email"] == normalized_email)
+
     def test_public_pages_render_while_protected_pages_redirect_in_all_supported_languages(self):
         for lang in ("en", "hy", "ru"):
             with self.subTest(lang=lang):
@@ -457,11 +462,13 @@ class FlaskAppTests(unittest.TestCase):
             response = client.post("/api/analyze", json=self.payload)
             data = response.get_json()
             history_entries = load_history(self.history_file)
+            current_user = self._user_by_email("demo@example.com")
 
         self.assertTrue(data["success"])
         self.assertEqual(len(history_entries), 1)
         self.assertEqual(history_entries[0]["product_name"], self.payload["name"])
         self.assertIn("confidence_level", history_entries[0])
+        self.assertEqual(history_entries[0]["user_id"], current_user["id"])
 
     def test_api_scenario_compare_still_returns_expected_data(self):
         with self.client as client:
@@ -484,10 +491,20 @@ class FlaskAppTests(unittest.TestCase):
         self.assertIsInstance(data["error"], str)
 
     def test_portfolio_export_csv_returns_file(self):
-        add_portfolio_product(self.portfolio_file, self.payload)
+        client_b = app.test_client()
 
         with self.client as client:
             self._sign_up(client)
+            self._sign_up(client_b, name="Other User", email="other@example.com")
+            current_user = self._user_by_email("demo@example.com")
+            other_user = self._user_by_email("other@example.com")
+            add_portfolio_product(self.portfolio_file, self.payload, user_id=current_user["id"])
+            add_portfolio_product(
+                self.portfolio_file,
+                test_product_payload(name="Other User Product"),
+                user_id=other_user["id"],
+            )
+
             response = client.get("/portfolio/export.csv")
             body = response.get_data(as_text=True)
 
@@ -495,13 +512,92 @@ class FlaskAppTests(unittest.TestCase):
         self.assertIn("text/csv", response.content_type)
         self.assertIn("product_name,category,scenario,current_price", body)
         self.assertIn("Luna Crossbody Bag", body)
+        self.assertNotIn("Other User Product", body)
+
+    def test_portfolio_page_shows_only_current_users_products(self):
+        client_a = app.test_client()
+        client_b = app.test_client()
+
+        self._sign_up(client_a, name="User A", email="usera@example.com")
+        self._sign_up(client_b, name="User B", email="userb@example.com")
+        user_a = self._user_by_email("usera@example.com")
+        user_b = self._user_by_email("userb@example.com")
+        add_portfolio_product(
+            self.portfolio_file,
+            test_product_payload(name="User A Product"),
+            user_id=user_a["id"],
+        )
+        add_portfolio_product(
+            self.portfolio_file,
+            test_product_payload(name="User B Product"),
+            user_id=user_b["id"],
+        )
+
+        response = client_a.get("/portfolio?lang=en")
+        body = response.get_data(as_text=True)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("User A Product", body)
+        self.assertNotIn("User B Product", body)
+
+    def test_portfolio_page_hides_other_users_products_and_shows_empty_state(self):
+        client_a = app.test_client()
+        client_b = app.test_client()
+
+        self._sign_up(client_a, name="User A", email="usera@example.com")
+        self._sign_up(client_b, name="User B", email="userb@example.com")
+        user_b = self._user_by_email("userb@example.com")
+        add_portfolio_product(
+            self.portfolio_file,
+            test_product_payload(name="User B Product"),
+            user_id=user_b["id"],
+        )
+
+        response = client_a.get("/portfolio?lang=en")
+        body = response.get_data(as_text=True)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn("User B Product", body)
+        self.assertIn("No saved products yet. Add a product to start portfolio-level pricing review.", body)
+
+    def test_history_export_json_returns_only_current_users_entries(self):
+        client_a = app.test_client()
+        client_b = app.test_client()
+
+        self._sign_up(client_a, name="User A", email="usera@example.com")
+        self._sign_up(client_b, name="User B", email="userb@example.com")
+        client_a.post(
+            "/api/analyze",
+            json=test_product_payload(name="User A Analysis"),
+        )
+        client_b.post(
+            "/api/analyze",
+            json=test_product_payload(name="User B Analysis"),
+        )
+
+        response = client_a.get("/history/export.json")
+        body = response.get_data(as_text=True)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("application/json", response.content_type)
+        self.assertIn("User A Analysis", body)
+        self.assertNotIn("User B Analysis", body)
 
     def test_bulk_template_download_validates_successfully(self):
         template_content = build_bulk_analysis_template()
         validation_result = validate_bulk_analysis_workbook(io.BytesIO(template_content))
+        products = parse_bulk_analysis_products(template_content)
 
         self.assertEqual(validation_result.errors, [])
         self.assertEqual(validation_result.valid_row_count, 1)
+        self.assertEqual(len(products), 1)
+        self.assertEqual(products[0]["current_price"], 72.0)
+        self.assertEqual(products[0]["unit_cost"], 26.0)
+        self.assertEqual(products[0]["base_demand"], 250.0)
+        self.assertEqual(products[0]["elasticity"], 1.2)
+        self.assertEqual(products[0]["competitor_price"], 79.0)
+        self.assertEqual(products[0]["min_price"], 58.0)
+        self.assertEqual(products[0]["max_price"], 92.0)
 
         with self.client as client:
             self._sign_up(client)
@@ -522,6 +618,70 @@ class FlaskAppTests(unittest.TestCase):
         self.assertIn("1 of 1 products were analyzed successfully. 0 products failed.", body)
         self.assertIn("SKU-001", body)
         self.assertIn("Optimal Price", body)
+
+    def test_bulk_validation_accepts_decimal_dot_strings(self):
+        workbook_content = _build_xlsx_workbook(
+            (
+                BULK_TEMPLATE_COLUMNS,
+                (
+                    "SKU-DOT",
+                    "Dot Decimal Product",
+                    "Accessories",
+                    " 72.5 ",
+                    "26.1",
+                    "250",
+                    "1.2",
+                    "79.4",
+                    "58.2",
+                    "92.8",
+                ),
+            )
+        )
+
+        validation_result = validate_bulk_analysis_workbook(io.BytesIO(workbook_content))
+        products = parse_bulk_analysis_products(workbook_content)
+
+        self.assertEqual(validation_result.errors, [])
+        self.assertEqual(validation_result.valid_row_count, 1)
+        self.assertEqual(products[0]["current_price"], 72.5)
+        self.assertEqual(products[0]["unit_cost"], 26.1)
+        self.assertEqual(products[0]["base_demand"], 250.0)
+        self.assertEqual(products[0]["elasticity"], 1.2)
+        self.assertEqual(products[0]["competitor_price"], 79.4)
+        self.assertEqual(products[0]["min_price"], 58.2)
+        self.assertEqual(products[0]["max_price"], 92.8)
+
+    def test_bulk_validation_accepts_decimal_comma_strings(self):
+        workbook_content = _build_xlsx_workbook(
+            (
+                BULK_TEMPLATE_COLUMNS,
+                (
+                    "SKU-COMMA",
+                    "Comma Decimal Product",
+                    "Accessories",
+                    " 72,5 ",
+                    "26,1",
+                    "250",
+                    "1,2",
+                    "79,4",
+                    "58,2",
+                    "92,8",
+                ),
+            )
+        )
+
+        validation_result = validate_bulk_analysis_workbook(io.BytesIO(workbook_content))
+        products = parse_bulk_analysis_products(workbook_content)
+
+        self.assertEqual(validation_result.errors, [])
+        self.assertEqual(validation_result.valid_row_count, 1)
+        self.assertEqual(products[0]["current_price"], 72.5)
+        self.assertEqual(products[0]["unit_cost"], 26.1)
+        self.assertEqual(products[0]["base_demand"], 250.0)
+        self.assertEqual(products[0]["elasticity"], 1.2)
+        self.assertEqual(products[0]["competitor_price"], 79.4)
+        self.assertEqual(products[0]["min_price"], 58.2)
+        self.assertEqual(products[0]["max_price"], 92.8)
 
     def test_bulk_upload_accepts_free_form_categories(self):
         workbook_content = _build_xlsx_workbook(
@@ -589,6 +749,39 @@ class FlaskAppTests(unittest.TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn("Missing required columns: current_price, elasticity.", body)
 
+    def test_bulk_upload_reports_missing_required_numeric_values(self):
+        invalid_content = _build_xlsx_workbook(
+            (
+                BULK_TEMPLATE_COLUMNS,
+                (
+                    "SKU-004",
+                    "Missing Required Numbers",
+                    "Accessories",
+                    "",
+                    12,
+                    "",
+                    "",
+                    15,
+                    "",
+                    "",
+                ),
+            )
+        )
+
+        with self.client as client:
+            self._sign_up(client)
+            response = client.post(
+                "/bulk-analysis?lang=en",
+                data={"product_file": (io.BytesIO(invalid_content), "products.xlsx")},
+                content_type="multipart/form-data",
+            )
+            body = response.get_data(as_text=True)
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("Row 2: current_price is required.", body)
+        self.assertIn("Row 2: base_demand is required.", body)
+        self.assertIn("Row 2: elasticity is required.", body)
+
     def test_bulk_upload_reports_row_level_validation_errors(self):
         invalid_content = _build_xlsx_workbook(
             (
@@ -639,10 +832,10 @@ class FlaskAppTests(unittest.TestCase):
         self.assertIn("Row 3: max_price must be greater than 0.", body)
 
     def test_portfolio_page_renders_financial_summary_and_contribution_analysis(self):
-        add_portfolio_product(self.portfolio_file, self.payload)
-
         with self.client as client:
             self._sign_up(client)
+            current_user = self._user_by_email("demo@example.com")
+            add_portfolio_product(self.portfolio_file, self.payload, user_id=current_user["id"])
             response = client.get("/portfolio?lang=en")
             body = response.get_data(as_text=True)
 

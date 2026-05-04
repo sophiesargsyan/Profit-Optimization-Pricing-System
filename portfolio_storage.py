@@ -49,26 +49,28 @@ def _normalize_product_record(product):
     return normalized
 
 
-def load_portfolio(file_path):
+def load_portfolio(file_path, user_id=None):
     products = read_json_list(file_path, _seed_records)
     normalized = [_normalize_product_record(product) for product in products]
     if normalized != products:
         save_portfolio(file_path, normalized)
-    return normalized
+    if user_id is None:
+        return normalized
+    return [product for product in normalized if product.get("user_id") == user_id]
 
 
 def save_portfolio(file_path, products):
     write_json(file_path, list(products))
 
 
-def get_portfolio_product(file_path, product_id):
-    for product in load_portfolio(file_path):
+def get_portfolio_product(file_path, product_id, user_id=None):
+    for product in load_portfolio(file_path, user_id=user_id):
         if product.get("id") == product_id:
             return product
     return None
 
 
-def add_portfolio_product(file_path, product_data):
+def add_portfolio_product(file_path, product_data, user_id=None):
     products = load_portfolio(file_path)
     now = _timestamp()
     record = {
@@ -77,17 +79,21 @@ def add_portfolio_product(file_path, product_data):
         "created_at": now,
         "updated_at": now,
     }
+    if user_id is not None:
+        record["user_id"] = user_id
     products.append(record)
     save_portfolio(file_path, products)
     return record
 
 
-def update_portfolio_product(file_path, product_id, product_data):
+def update_portfolio_product(file_path, product_id, product_data, user_id=None):
     products = load_portfolio(file_path)
     now = _timestamp()
 
     for index, product in enumerate(products):
         if product.get("id") != product_id:
+            continue
+        if user_id is not None and product.get("user_id") != user_id:
             continue
 
         updated = {
@@ -96,6 +102,8 @@ def update_portfolio_product(file_path, product_id, product_data):
             "created_at": product.get("created_at", now),
             "updated_at": now,
         }
+        if user_id is not None:
+            updated["user_id"] = user_id
         products[index] = updated
         save_portfolio(file_path, products)
         return updated
@@ -103,9 +111,14 @@ def update_portfolio_product(file_path, product_id, product_data):
     raise KeyError(product_id)
 
 
-def delete_portfolio_product(file_path, product_id):
+def delete_portfolio_product(file_path, product_id, user_id=None):
     products = load_portfolio(file_path)
-    filtered = [product for product in products if product.get("id") != product_id]
+    filtered = [
+        product
+        for product in products
+        if product.get("id") != product_id
+        or (user_id is not None and product.get("user_id") != user_id)
+    ]
     if len(filtered) == len(products):
         return False
 

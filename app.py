@@ -320,6 +320,24 @@ def is_authenticated():
     return current_user() is not None
 
 
+def _current_user_id():
+    user = current_user()
+    return user.get("id") if user else None
+
+
+def _current_user_portfolio_products():
+    return _sort_portfolio_products(
+        load_portfolio(get_portfolio_file(), user_id=_current_user_id())
+    )
+
+
+def _current_user_history_entries():
+    return [
+        {key: value for key, value in entry.items() if key != "user_id"}
+        for entry in load_history(get_history_file(), user_id=_current_user_id())
+    ]
+
+
 def protected_url(endpoint=None, **kwargs):
     target = localized_url(endpoint, **kwargs)
     if is_authenticated():
@@ -851,11 +869,17 @@ def inject_i18n():
 
 
 def render_portfolio_workspace(form_values=None, edit_product_id=None, error_message=None, status=200):
-    portfolio_products = _sort_portfolio_products(load_portfolio(get_portfolio_file()))
+    portfolio_products = _current_user_portfolio_products()
     comparison_rows = build_portfolio_comparison(portfolio_products) if portfolio_products else []
-    history_entries = list(reversed(load_history(get_history_file())))
+    history_entries = list(reversed(_current_user_history_entries()))
     editing_product = (
-        get_portfolio_product(get_portfolio_file(), edit_product_id) if edit_product_id else None
+        get_portfolio_product(
+            get_portfolio_file(),
+            edit_product_id,
+            user_id=_current_user_id(),
+        )
+        if edit_product_id
+        else None
     )
 
     return (
@@ -1168,16 +1192,35 @@ def _bulk_data_rows(rows):
     ]
 
 
-def _parse_bulk_number(value, row_number, field_name, errors, required=False, positive=False):
+def _parse_bulk_numeric_value(value):
     if _is_blank_cell(value):
-        if required:
-            errors.append(f"Row {row_number}: {field_name} is required.")
         return None
 
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return float(value)
+
+    normalized_value = str(value).strip()
+    if "," in normalized_value:
+        if "." in normalized_value or normalized_value.count(",") > 1:
+            raise ValueError("invalid")
+        normalized_value = normalized_value.replace(",", ".", 1)
+
     try:
-        numeric_value = float(str(value).strip())
-    except (TypeError, ValueError):
+        return float(normalized_value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("invalid") from exc
+
+
+def _parse_bulk_number(value, row_number, field_name, errors, required=False, positive=False):
+    try:
+        numeric_value = _parse_bulk_numeric_value(value)
+    except ValueError:
         errors.append(f"Row {row_number}: {field_name} must be a valid number.")
+        return None
+
+    if numeric_value is None:
+        if required:
+            errors.append(f"Row {row_number}: {field_name} is required.")
         return None
 
     if positive and numeric_value <= 0:
@@ -1186,7 +1229,7 @@ def _parse_bulk_number(value, row_number, field_name, errors, required=False, po
 
 
 def _parse_valid_bulk_number(value):
-    return None if _is_blank_cell(value) else float(str(value).strip())
+    return _parse_bulk_numeric_value(value)
 
 
 def validate_bulk_analysis_workbook(uploaded_file):
@@ -1577,10 +1620,19 @@ def portfolio_save():
         payload = asdict(product)
 
         if product_id:
-            update_portfolio_product(get_portfolio_file(), product_id, payload)
+            update_portfolio_product(
+                get_portfolio_file(),
+                product_id,
+                payload,
+                user_id=_current_user_id(),
+            )
             flash(translated_message("portfolio.messages.updated", "Product updated in the portfolio."), "success")
         else:
-            add_portfolio_product(get_portfolio_file(), payload)
+            add_portfolio_product(
+                get_portfolio_file(),
+                payload,
+                user_id=_current_user_id(),
+            )
             flash(translated_message("portfolio.messages.added", "Product added to the portfolio."), "success")
 
         return redirect(localized_url("portfolio_page"))
@@ -1600,7 +1652,11 @@ def portfolio_save():
 @app.route("/portfolio/<product_id>/delete", methods=["POST"])
 @login_required
 def portfolio_delete(product_id):
-    deleted = delete_portfolio_product(get_portfolio_file(), product_id)
+    deleted = delete_portfolio_product(
+        get_portfolio_file(),
+        product_id,
+        user_id=_current_user_id(),
+    )
     message_key = "portfolio.messages.deleted" if deleted else "portfolio.messages.not_found"
     fallback = "Product deleted from the portfolio." if deleted else "The selected product could not be found."
     flash(translated_message(message_key, fallback), "success" if deleted else "danger")
@@ -1610,7 +1666,7 @@ def portfolio_delete(product_id):
 @app.route("/portfolio/export.csv")
 @login_required
 def portfolio_export_csv():
-    portfolio_products = _sort_portfolio_products(load_portfolio(get_portfolio_file()))
+    portfolio_products = _current_user_portfolio_products()
     comparison_rows = build_portfolio_comparison(portfolio_products) if portfolio_products else []
     csv_content = "\ufeff" + portfolio_analysis_to_csv(comparison_rows)
     return download_response(csv_content, "pricepilot_portfolio_analysis.csv", "text/csv; charset=utf-8")
@@ -1619,14 +1675,14 @@ def portfolio_export_csv():
 @app.route("/history/export.csv")
 @login_required
 def history_export_csv():
-    csv_content = "\ufeff" + history_to_csv(load_history(get_history_file()))
+    csv_content = "\ufeff" + history_to_csv(_current_user_history_entries())
     return download_response(csv_content, "pricepilot_analysis_history.csv", "text/csv; charset=utf-8")
 
 
 @app.route("/history/export.json")
 @login_required
 def history_export_json():
-    json_content = history_to_json(load_history(get_history_file()))
+    json_content = history_to_json(_current_user_history_entries())
     return download_response(json_content, "pricepilot_analysis_history.json", "application/json; charset=utf-8")
 
 
@@ -1687,7 +1743,11 @@ def api_analyze():
         result = analyze_product(product)
 
         if _boolean_input(data.get("save_history"), default=True):
-            append_history_entry(get_history_file(), build_history_entry(result))
+            append_history_entry(
+                get_history_file(),
+                build_history_entry(result),
+                user_id=_current_user_id(),
+            )
 
         return api_success(localize_analysis_result(result, g.current_lang))
     except ValueError as exc:
