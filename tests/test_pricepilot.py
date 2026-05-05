@@ -18,6 +18,7 @@ from app import (
 )
 from data_repository import load_business_dataset
 from export_service import history_to_csv, history_to_json, portfolio_analysis_to_csv
+from finance_storage import load_finance_records, save_finance_records
 from financial_formatting import (
     EMPTY_DISPLAY,
     format_currency_value,
@@ -313,14 +314,17 @@ class FlaskAppTests(unittest.TestCase):
         self.portfolio_file = Path(self.temp_dir.name) / "portfolio.json"
         self.history_file = Path(self.temp_dir.name) / "history.json"
         self.users_file = Path(self.temp_dir.name) / "users.json"
+        self.finance_file = Path(self.temp_dir.name) / "finance.json"
 
         app.config["TESTING"] = True
         app.config["PORTFOLIO_FILE"] = self.portfolio_file
         app.config["HISTORY_FILE"] = self.history_file
         app.config["USERS_FILE"] = self.users_file
+        app.config["FINANCE_FILE"] = self.finance_file
 
         save_portfolio(self.portfolio_file, [])
         save_history(self.history_file, [])
+        save_finance_records(self.finance_file, [])
 
         self.client = app.test_client()
         self.payload = test_product_payload()
@@ -355,6 +359,7 @@ class FlaskAppTests(unittest.TestCase):
             with self.subTest(lang=lang):
                 home_response = self.client.get(f"/?lang={lang}")
                 analyze_response = self.client.get(f"/analyze?lang={lang}")
+                finance_response = self.client.get(f"/finance?lang={lang}")
                 portfolio_response = self.client.get(f"/portfolio?lang={lang}")
                 dashboard_response = self.client.get(f"/dashboard?lang={lang}")
                 about_response = self.client.get(f"/about?lang={lang}")
@@ -365,6 +370,7 @@ class FlaskAppTests(unittest.TestCase):
                 self.assertIn("/sign-in?", analyze_response.location)
                 self.assertIn(f"next=/analyze?lang%3D{lang}", analyze_response.location)
                 self.assertIn(f"&lang={lang}", analyze_response.location)
+                self.assertEqual(finance_response.status_code, 302)
                 self.assertEqual(portfolio_response.status_code, 302)
                 self.assertEqual(dashboard_response.status_code, 302)
                 self.assertEqual(about_response.status_code, 302)
@@ -379,11 +385,13 @@ class FlaskAppTests(unittest.TestCase):
                 with self.subTest(lang=lang):
                     analyze_response = client.get(f"/analyze?lang={lang}")
                     bulk_response = client.get(f"/bulk-analysis?lang={lang}")
+                    finance_response = client.get(f"/finance?lang={lang}")
                     portfolio_response = client.get(f"/portfolio?lang={lang}")
                     dashboard_response = client.get(f"/dashboard?lang={lang}")
                     about_response = client.get(f"/about?lang={lang}")
                     self.assertEqual(analyze_response.status_code, 200)
                     self.assertEqual(bulk_response.status_code, 200)
+                    self.assertEqual(finance_response.status_code, 200)
                     self.assertEqual(portfolio_response.status_code, 200)
                     self.assertEqual(dashboard_response.status_code, 200)
                     self.assertEqual(about_response.status_code, 200)
@@ -494,6 +502,133 @@ class FlaskAppTests(unittest.TestCase):
         self.assertIn(self.payload["name"], body)
         self.assertNotIn('<div class="empty-state empty-state-block">', body)
 
+    def test_finance_page_renders_armenian_budget_form(self):
+        with self.client as client:
+            self._sign_up(client)
+            response = client.get("/finance?lang=hy")
+            body = response.get_data(as_text=True)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Ֆինանսներ և բյուջեի կառավարում", body)
+        self.assertIn("Բյուջեի մուտքեր", body)
+        self.assertIn("Ընդհանուր բյուջե", body)
+        self.assertIn("Ապրանքի ծախսերի բյուջե", body)
+        self.assertIn("Պահուստային բյուջե", body)
+        self.assertIn('href="/finance?lang=hy"', body)
+
+    def test_finance_page_calculates_budget_summary_and_recommendations(self):
+        currency_code = load_business_dataset().business_settings.currency.upper()
+
+        with self.client as client:
+            self._sign_up(client)
+            response = client.post(
+                "/finance?lang=en",
+                data={
+                    "total_budget": "1000",
+                    "product_cost_budget": "400",
+                    "marketing_budget": "350",
+                    "delivery_budget": "100",
+                    "packaging_budget": "50",
+                    "operational_budget": "70",
+                    "reserve_budget": "30",
+                },
+            )
+            body = response.get_data(as_text=True)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Budget summary", body)
+        self.assertIn("Allocated amount", body)
+        self.assertIn("Remaining budget", body)
+        self.assertIn("Budget status", body)
+        self.assertIn(format_currency_value(1000, currency_code), body)
+        self.assertIn(format_currency_value(30, currency_code), body)
+        self.assertIn("35.0%", body)
+        self.assertIn("3.0%", body)
+        self.assertIn("Balanced", body)
+        self.assertIn("Reserve budget is below 10% of the total budget.", body)
+        self.assertIn("Marketing budget is above 30% of the total budget.", body)
+        self.assertIn("Budget is balanced. Current allocations match the total budget.", body)
+
+    def test_finance_data_is_saved_after_post(self):
+        with self.client as client:
+            self._sign_up(client)
+            client.post(
+                "/finance?lang=en",
+                data={
+                    "total_budget": "1000",
+                    "product_cost_budget": "400",
+                    "marketing_budget": "120",
+                    "delivery_budget": "90",
+                    "packaging_budget": "40",
+                    "operational_budget": "200",
+                    "reserve_budget": "150",
+                },
+            )
+            current_user = self._user_by_email("demo@example.com")
+
+        finance_records = load_finance_records(self.finance_file)
+        self.assertEqual(len(finance_records), 1)
+        self.assertEqual(finance_records[0]["user_id"], current_user["id"])
+        self.assertEqual(finance_records[0]["total_budget"], 1000.0)
+        self.assertEqual(finance_records[0]["marketing_budget"], 120.0)
+        self.assertIn("created_at", finance_records[0])
+        self.assertIn("updated_at", finance_records[0])
+        self.assertNotIn("budget_summary", finance_records[0])
+        self.assertNotIn("status", finance_records[0])
+        self.assertNotIn("recommendations", finance_records[0])
+
+    def test_finance_get_preloads_saved_data(self):
+        with self.client as client:
+            self._sign_up(client)
+            client.post(
+                "/finance?lang=en",
+                data={
+                    "total_budget": "1500",
+                    "product_cost_budget": "500",
+                    "marketing_budget": "250",
+                    "delivery_budget": "125",
+                    "packaging_budget": "75",
+                    "operational_budget": "300",
+                    "reserve_budget": "250",
+                },
+            )
+            response = client.get("/finance?lang=en")
+            body = response.get_data(as_text=True)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('value="1500"', body)
+        self.assertIn('value="500"', body)
+        self.assertIn('value="250"', body)
+        self.assertIn("Budget summary", body)
+        self.assertIn("Balanced", body)
+
+    def test_finance_user_isolation_hides_other_users_budget(self):
+        client_a = app.test_client()
+        client_b = app.test_client()
+
+        self._sign_up(client_a, name="User A", email="usera@example.com")
+        self._sign_up(client_b, name="User B", email="userb@example.com")
+        client_b.post(
+            "/finance?lang=en",
+            data={
+                "total_budget": "7777",
+                "product_cost_budget": "3000",
+                "marketing_budget": "1000",
+                "delivery_budget": "500",
+                "packaging_budget": "250",
+                "operational_budget": "1500",
+                "reserve_budget": "1527",
+            },
+        )
+
+        response = client_a.get("/finance?lang=en")
+        body = response.get_data(as_text=True)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn('value="7777"', body)
+        self.assertNotIn('value="3000"', body)
+        self.assertNotIn('<span class="risk-pill ', body)
+
     def test_saved_history_persists_after_logout_and_login(self):
         product_name = "Persisted Workspace Product"
 
@@ -575,7 +710,7 @@ class FlaskAppTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertNotIn("User B Product", body)
-        self.assertIn("Saved analyses: 0", body)
+        self.assertIn("0 saved analyses", body)
         self.assertIn("0.0%", body)
         self.assertIn("N/A", body)
         self.assertIn("No saved analyses yet. Run an analysis to start your workspace history.", body)
@@ -1018,6 +1153,7 @@ class FlaskAppTests(unittest.TestCase):
         self.assertIn('href="/analyze?lang=en"', private_body)
         self.assertIn('href="/portfolio?lang=en"', private_body)
         self.assertIn('href="/dashboard?lang=en"', private_body)
+        self.assertIn('href="/finance?lang=en"', private_body)
         self.assertIn('href="/about?lang=en"', private_body)
         self.assertIn('action="/sign-out?lang=en"', private_body)
         self.assertNotIn('href="/sign-in?lang=en"', private_body)

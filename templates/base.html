@@ -26,6 +26,7 @@
                         <li class="nav-item"><a class="nav-link {% if page_name == 'analyze' %}active{% endif %}" href="{{ localized_url('analyze_page') }}">{{ t["nav.analyze"] }}</a></li>
                         <li class="nav-item"><a class="nav-link {% if page_name == 'portfolio' %}active{% endif %}" href="{{ localized_url('portfolio_page') }}">{{ t["nav.portfolio"] }}</a></li>
                         <li class="nav-item"><a class="nav-link {% if page_name == 'dashboard' %}active{% endif %}" href="{{ localized_url('dashboard_page') }}">{{ t["nav.dashboard"] }}</a></li>
+                        <li class="nav-item"><a class="nav-link {% if page_name == 'finance' %}active{% endif %}" href="{{ localized_url('finance_page') }}">{{ t.get("nav.finance", "Finance") }}</a></li>
                         <li class="nav-item"><a class="nav-link {% if page_name == 'about' %}active{% endif %}" href="{{ localized_url('about_page') }}">{{ t["nav.about"] }}</a></li>
                         {% else %}
                         <li class="nav-item mt-2 mt-lg-0">

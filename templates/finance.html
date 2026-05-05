@@ -1,0 +1,147 @@
+{% extends "base.html" %}
+
+{% block title %}{{ t["brand.name"] }} | {{ t.get("title.finance", "Finance & Budget Management") }}{% endblock %}
+
+{% block content %}
+<section class="section-space">
+    <div class="container">
+        <div class="page-heading page-heading-left mb-4">
+            <span class="eyebrow-pill">{{ t.get("finance.eyebrow", "Budget planning") }}</span>
+            <h1>{{ t.get("finance.title", "Finance & Budget Management") }}</h1>
+            <p>{{ t.get("finance.subtitle", "Plan a simple operating budget, review allocations, and spot budget pressure before execution.") }}</p>
+        </div>
+
+        <div class="analysis-workspace">
+            {% if error_message %}
+            <div class="alert alert-danger mb-4" role="alert">{{ error_message }}</div>
+            {% endif %}
+
+            <div class="app-card analysis-primary-card mb-4">
+                <div class="section-header mb-4">
+                    <div>
+                        <h2 class="section-title mb-1">{{ t.get("finance.form.title", "Budget inputs") }}</h2>
+                        <p class="text-muted mb-0">{{ t.get("finance.form.subtitle", "Enter the total budget and the planned allocation for each category.") }}</p>
+                    </div>
+                    <span class="soft-badge">{{ t.get("nav.finance", "Finance") }}</span>
+                </div>
+
+                <form method="post" action="{{ localized_url('finance_page') }}" class="row g-3">
+                    <div class="col-12 col-xl-6">
+                        <label class="form-label" for="total_budget">{{ t.get("finance.field.total_budget", "Total budget") }}</label>
+                        <input class="form-control" type="number" id="total_budget" name="total_budget" min="0" step="0.01" value="{{ form_values.total_budget }}">
+                    </div>
+                    <div class="col-12 col-xl-6">
+                        <label class="form-label" for="product_cost_budget">{{ t.get("finance.field.product_cost_budget", "Product cost budget") }}</label>
+                        <input class="form-control" type="number" id="product_cost_budget" name="product_cost_budget" min="0" step="0.01" value="{{ form_values.product_cost_budget }}">
+                    </div>
+                    <div class="col-12 col-md-6 col-xl-4">
+                        <label class="form-label" for="marketing_budget">{{ t.get("finance.field.marketing_budget", "Marketing budget") }}</label>
+                        <input class="form-control" type="number" id="marketing_budget" name="marketing_budget" min="0" step="0.01" value="{{ form_values.marketing_budget }}">
+                    </div>
+                    <div class="col-12 col-md-6 col-xl-4">
+                        <label class="form-label" for="delivery_budget">{{ t.get("finance.field.delivery_budget", "Delivery budget") }}</label>
+                        <input class="form-control" type="number" id="delivery_budget" name="delivery_budget" min="0" step="0.01" value="{{ form_values.delivery_budget }}">
+                    </div>
+                    <div class="col-12 col-md-6 col-xl-4">
+                        <label class="form-label" for="packaging_budget">{{ t.get("finance.field.packaging_budget", "Packaging budget") }}</label>
+                        <input class="form-control" type="number" id="packaging_budget" name="packaging_budget" min="0" step="0.01" value="{{ form_values.packaging_budget }}">
+                    </div>
+                    <div class="col-12 col-md-6 col-xl-6">
+                        <label class="form-label" for="operational_budget">{{ t.get("finance.field.operational_budget", "Operational budget") }}</label>
+                        <input class="form-control" type="number" id="operational_budget" name="operational_budget" min="0" step="0.01" value="{{ form_values.operational_budget }}">
+                    </div>
+                    <div class="col-12 col-md-6 col-xl-6">
+                        <label class="form-label" for="reserve_budget">{{ t.get("finance.field.reserve_budget", "Reserve budget") }}</label>
+                        <input class="form-control" type="number" id="reserve_budget" name="reserve_budget" min="0" step="0.01" value="{{ form_values.reserve_budget }}">
+                    </div>
+                    <div class="col-12 d-grid d-sm-flex justify-content-sm-end">
+                        <button type="submit" class="btn btn-dark btn-lg px-sm-4">{{ t.get("finance.form.submit", "Calculate budget") }}</button>
+                    </div>
+                </form>
+            </div>
+
+            {% if budget_summary %}
+            <div class="section-header mb-4">
+                <div>
+                    <h2 class="section-title mb-1">{{ t.get("finance.results.title", "Budget summary") }}</h2>
+                    <p class="text-muted mb-0">{{ t.get("finance.results.subtitle", "Review the current allocation, remaining budget, and the status of the plan.") }}</p>
+                </div>
+                <span class="risk-pill {{ budget_summary.status_class }}">{{ t.get("finance.status." ~ budget_summary.status, budget_summary.status|title) }}</span>
+            </div>
+
+            <div class="row g-3 mb-4">
+                <div class="col-md-6 col-xl-3">
+                    <div class="metric-card summary-card">
+                        <span class="metric-label">{{ t.get("finance.card.total_budget", "Total budget") }}</span>
+                        <div class="metric-value">{{ display_currency(budget_summary.total_budget) }}</div>
+                    </div>
+                </div>
+                <div class="col-md-6 col-xl-3">
+                    <div class="metric-card summary-card">
+                        <span class="metric-label">{{ t.get("finance.card.allocated_amount", "Allocated amount") }}</span>
+                        <div class="metric-value">{{ display_currency(budget_summary.allocated_amount) }}</div>
+                    </div>
+                </div>
+                <div class="col-md-6 col-xl-3">
+                    <div class="metric-card summary-card {% if budget_summary.remaining_budget < 0 %}summary-card-primary{% endif %}">
+                        <span class="metric-label">{{ t.get("finance.card.remaining_budget", "Remaining budget") }}</span>
+                        <div class="metric-value">{{ display_currency(budget_summary.remaining_budget) }}</div>
+                    </div>
+                </div>
+                <div class="col-md-6 col-xl-3">
+                    <div class="metric-card summary-card summary-card-primary">
+                        <span class="metric-label">{{ t.get("finance.card.status", "Budget status") }}</span>
+                        <div class="metric-value">{{ t.get("finance.status." ~ budget_summary.status, budget_summary.status|title) }}</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="app-card mb-4">
+                <div class="section-header mb-3">
+                    <div>
+                        <h2 class="section-title mb-1">{{ t.get("finance.table.title", "Allocation breakdown") }}</h2>
+                        <p class="text-muted mb-0">{{ t.get("finance.table.subtitle", "See how each budget category contributes to the overall plan.") }}</p>
+                    </div>
+                </div>
+
+                <div class="table-responsive">
+                    <table class="table align-middle comparison-table mb-0">
+                        <thead>
+                            <tr>
+                                <th>{{ t.get("finance.table.category", "Category") }}</th>
+                                <th class="table-number">{{ t.get("finance.table.amount", "Amount") }}</th>
+                                <th class="table-number">{{ t.get("finance.table.percentage", "Percentage") }}</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for row in budget_rows %}
+                            <tr>
+                                <td>{{ t.get("finance.field." ~ row.field_name, row.field_name.replace("_", " ")|title) }}</td>
+                                <td class="table-number">{{ display_currency(row.amount) }}</td>
+                                <td class="table-number">{{ display_percent(row.percentage) }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="app-card">
+                <div class="section-header mb-3">
+                    <div>
+                        <h2 class="section-title mb-1">{{ t.get("finance.recommendations.title", "Recommendations") }}</h2>
+                        <p class="text-muted mb-0">{{ t.get("finance.recommendations.subtitle", "Use these quick checks to adjust the budget before execution.") }}</p>
+                    </div>
+                </div>
+
+                {% for recommendation in recommendations %}
+                <div class="alert alert-{{ recommendation.tone }} {% if not loop.last %}mb-3{% else %}mb-0{% endif %}" role="alert">
+                    {{ t.get(recommendation.key, recommendation.key) }}
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</section>
+{% endblock %}

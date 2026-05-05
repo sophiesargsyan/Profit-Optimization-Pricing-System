@@ -33,6 +33,7 @@ from auth_storage import add_user, get_user_by_email, get_user_by_id
 from catalog_profiles import CATEGORY_PROFILES
 from data_repository import load_business_dataset
 from export_service import history_to_csv, history_to_json, portfolio_analysis_to_csv
+from finance_storage import get_finance_record, upsert_finance_record
 from financial_formatting import (
     build_financial_format_config,
     format_currency_value,
@@ -75,6 +76,7 @@ TRANSLATIONS_DIR = BASE_DIR / "translations"
 app.config.setdefault("PORTFOLIO_FILE", DATA_DIR / "portfolio.json")
 app.config.setdefault("HISTORY_FILE", DATA_DIR / "history.json")
 app.config.setdefault("USERS_FILE", DATA_DIR / "users.json")
+app.config.setdefault("FINANCE_FILE", DATA_DIR / "finance.json")
 PASSWORD_MIN_LENGTH = 8
 
 STRING_FIELDS = {
@@ -176,6 +178,19 @@ BULK_REQUIRED_POSITIVE_NUMERIC_FIELDS = (
     "competitor_price",
 )
 BULK_OPTIONAL_NUMERIC_FIELDS = ("min_price", "max_price")
+FINANCE_BUDGET_FIELDS = (
+    "total_budget",
+    "product_cost_budget",
+    "marketing_budget",
+    "delivery_budget",
+    "packaging_budget",
+    "operational_budget",
+    "reserve_budget",
+)
+FINANCE_ALLOCATION_FIELDS = FINANCE_BUDGET_FIELDS[1:]
+FINANCE_STATUS_TOLERANCE = 0.01
+FINANCE_RESERVE_MIN_PERCENT = 10.0
+FINANCE_MARKETING_MAX_PERCENT = 30.0
 
 
 @dataclass
@@ -275,6 +290,10 @@ def get_history_file():
 
 def get_users_file():
     return Path(app.config["USERS_FILE"])
+
+
+def get_finance_file():
+    return Path(app.config["FINANCE_FILE"])
 
 
 def _timestamp():
@@ -955,6 +974,148 @@ def render_bulk_analysis_page(validation_errors=None, bulk_results=None, status=
     )
 
 
+def _finance_form_values(source=None):
+    source = source or {}
+    values = {}
+    for field_name in FINANCE_BUDGET_FIELDS:
+        raw_value = source.get(field_name)
+        if raw_value is None:
+            values[field_name] = ""
+        elif isinstance(raw_value, (int, float)):
+            values[field_name] = _format_form_number(raw_value)
+        else:
+            values[field_name] = str(raw_value).strip()
+    return values
+
+
+def _finance_field_label(field_name):
+    return translated_message(
+        f"finance.field.{field_name}",
+        field_name.replace("_", " ").title(),
+    )
+
+
+def _parse_finance_amount(value, field_name):
+    raw_value = str(value or "").strip()
+    if not raw_value:
+        return 0.0
+
+    normalized_value = raw_value.replace(" ", "")
+    if "," in normalized_value and "." not in normalized_value:
+        normalized_value = normalized_value.replace(",", ".")
+    else:
+        normalized_value = normalized_value.replace(",", "")
+
+    try:
+        amount = round(float(normalized_value), 2)
+    except ValueError as exc:
+        raise ValueError(
+            translated_message(
+                "finance.validation.invalid_number",
+                "{field} must be a valid number.",
+            ).format(field=_finance_field_label(field_name))
+        ) from exc
+
+    if amount < 0:
+        raise ValueError(
+            translated_message(
+                "finance.validation.non_negative",
+                "{field} must be 0 or greater.",
+            ).format(field=_finance_field_label(field_name))
+        )
+
+    return amount
+
+
+def _build_finance_budget_results(form_values):
+    values = {
+        field_name: _parse_finance_amount(form_values.get(field_name, ""), field_name)
+        for field_name in FINANCE_BUDGET_FIELDS
+    }
+
+    total_budget = values["total_budget"]
+    allocated_amount = round(sum(values[field_name] for field_name in FINANCE_ALLOCATION_FIELDS), 2)
+    remaining_budget = round(total_budget - allocated_amount, 2)
+
+    if abs(remaining_budget) < FINANCE_STATUS_TOLERANCE:
+        status = "balanced"
+        remaining_budget = 0.0
+    elif remaining_budget < 0:
+        status = "overallocated"
+    else:
+        status = "underallocated"
+
+    rows = []
+    for field_name in FINANCE_ALLOCATION_FIELDS:
+        amount = values[field_name]
+        percentage = round((amount / total_budget) * 100, 1) if total_budget > 0 else 0.0
+        rows.append(
+            {
+                "field_name": field_name,
+                "amount": amount,
+                "percentage": percentage,
+            }
+        )
+
+    reserve_percent = next(
+        row["percentage"] for row in rows if row["field_name"] == "reserve_budget"
+    )
+    marketing_percent = next(
+        row["percentage"] for row in rows if row["field_name"] == "marketing_budget"
+    )
+
+    recommendations = []
+    if allocated_amount > total_budget + FINANCE_STATUS_TOLERANCE:
+        recommendations.append({"tone": "danger", "key": "finance.recommendation.overallocated"})
+    if status == "underallocated":
+        recommendations.append({"tone": "info", "key": "finance.recommendation.underallocated"})
+    if total_budget > 0 and reserve_percent < FINANCE_RESERVE_MIN_PERCENT:
+        recommendations.append({"tone": "warning", "key": "finance.recommendation.reserve_low"})
+    if total_budget > 0 and marketing_percent > FINANCE_MARKETING_MAX_PERCENT:
+        recommendations.append({"tone": "warning", "key": "finance.recommendation.marketing_high"})
+    if status == "balanced":
+        recommendations.append({"tone": "success", "key": "finance.recommendation.balanced"})
+
+    return {
+        "values": values,
+        "budget_summary": {
+            "total_budget": total_budget,
+            "allocated_amount": allocated_amount,
+            "remaining_budget": remaining_budget,
+            "status": status,
+            "status_class": {
+                "balanced": "risk-low",
+                "overallocated": "risk-high",
+                "underallocated": "risk-medium",
+            }[status],
+        },
+        "budget_rows": rows,
+        "recommendations": recommendations,
+    }
+
+
+def render_finance_page(
+    form_values=None,
+    budget_summary=None,
+    budget_rows=None,
+    recommendations=None,
+    error_message=None,
+    status=200,
+):
+    return (
+        render_template(
+            "finance.html",
+            page_name="finance",
+            form_values=_finance_form_values(form_values),
+            budget_summary=budget_summary,
+            budget_rows=budget_rows or [],
+            recommendations=recommendations or [],
+            error_message=error_message,
+        ),
+        status,
+    )
+
+
 def download_response(content, filename, mimetype):
     return Response(
         content,
@@ -1505,6 +1666,45 @@ def bulk_analysis_template():
         build_bulk_analysis_template(),
         "pricepilot_bulk_product_template.xlsx",
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
+
+@app.route("/finance", methods=["GET", "POST"])
+@login_required
+def finance_page():
+    if request.method == "POST":
+        form_values = request.form.to_dict(flat=True)
+        try:
+            finance_results = _build_finance_budget_results(form_values)
+        except ValueError as exc:
+            return render_finance_page(
+                form_values=form_values,
+                error_message=str(exc),
+                status=400,
+            )
+
+        saved_record = upsert_finance_record(
+            get_finance_file(),
+            finance_results["values"],
+            user_id=_current_user_id(),
+        )
+        return render_finance_page(
+            form_values=saved_record,
+            budget_summary=finance_results["budget_summary"],
+            budget_rows=finance_results["budget_rows"],
+            recommendations=finance_results["recommendations"],
+        )
+
+    saved_record = get_finance_record(get_finance_file(), user_id=_current_user_id())
+    if saved_record is None:
+        return render_finance_page()
+
+    finance_results = _build_finance_budget_results(saved_record)
+    return render_finance_page(
+        form_values=saved_record,
+        budget_summary=finance_results["budget_summary"],
+        budget_rows=finance_results["budget_rows"],
+        recommendations=finance_results["recommendations"],
     )
 
 
