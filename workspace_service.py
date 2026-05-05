@@ -148,7 +148,18 @@ def build_portfolio_comparison(records):
             continue
 
         best = analysis["best_strategy"]
+        current_option = analysis.get("current_option")
         projected_quantity = float(best.get("demand", 0.0) or 0.0)
+        current_profit = None
+        profit_improvement_percent = None
+
+        if isinstance(current_option, dict) and current_option.get("profit") is not None:
+            current_profit = round(float(current_option["profit"]), 2)
+            if current_profit != 0:
+                profit_improvement_percent = round(
+                    ((float(best.get("profit", 0.0)) - current_profit) / abs(current_profit)) * 100,
+                    2,
+                )
 
         # Keep a simple portfolio finance layer alongside the full pricing model.
         # This is used for portfolio-wide revenue, cost, profit, and contribution rollups.
@@ -171,6 +182,8 @@ def build_portfolio_comparison(records):
                 "expected_revenue": best["revenue"],
                 "expected_total_cost": best["total_cost"],
                 "expected_profit": best["profit"],
+                "current_profit": current_profit,
+                "profit_improvement_percent": profit_improvement_percent,
                 "margin": best["profit_margin"],
                 "portfolio_revenue": portfolio_revenue,
                 "portfolio_cost": portfolio_cost,
@@ -198,8 +211,19 @@ def summarize_portfolio(rows, history_entries):
     total_revenue = round(sum(row.get("portfolio_revenue", 0.0) for row in rows), 2)
     total_cost = round(sum(row.get("portfolio_cost", 0.0) for row in rows), 2)
     total_profit = round(total_revenue - total_cost, 2)
+    total_expected_profit = round(sum(row.get("expected_profit", 0.0) for row in rows), 2)
     average_margin = round((total_profit / total_revenue) * 100, 2) if total_revenue > 0 else 0.0
     high_confidence_products = sum(1 for row in rows if row["confidence_level"] == "High")
+    profit_improvement_values = [
+        row["profit_improvement_percent"]
+        for row in rows
+        if row.get("profit_improvement_percent") is not None
+    ]
+    average_profit_improvement_percent = (
+        round(sum(profit_improvement_values) / len(profit_improvement_values), 2)
+        if profit_improvement_values
+        else 0.0
+    )
 
     # Contribution share stays safe when the portfolio profit pool is zero.
     for row in rows:
@@ -222,20 +246,28 @@ def summarize_portfolio(rows, history_entries):
         if rows
         else None
     )
+    top_expected_profit_product = (
+        max(rows, key=lambda row: (row["expected_profit"], row["confidence_score"], row["margin"]))
+        if rows
+        else None
+    )
 
     return {
         "total_products": total_products,
         "total_revenue": total_revenue,
         "total_cost": total_cost,
         "total_profit": total_profit,
+        "total_expected_profit": total_expected_profit,
         "projected_revenue": total_revenue,
         "projected_total_cost": total_cost,
         "projected_profit": total_profit,
         "average_margin": average_margin,
+        "average_profit_improvement_percent": average_profit_improvement_percent,
         "high_confidence_products": high_confidence_products,
         "best_performing_product": best_performing_product,
         "weakest_performing_product": weakest_performing_product,
         "highest_profit_product": highest_profit_product,
+        "top_expected_profit_product": top_expected_profit_product,
         "best_product": best_performing_product,
         "worst_product": weakest_performing_product,
         "history_entries": len(history_entries),

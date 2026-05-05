@@ -257,6 +257,10 @@ body[data-page="portfolio"] .page-heading.page-heading-left p {
     max-width: 58rem !important;
 }
 
+body[data-page="portfolio"] .analysis-workspace > .page-heading.page-heading-left {
+    max-width: none !important;
+}
+
 .analysis-workspace,
 .analysis-results-shell {
     max-width: 1180px;
@@ -2180,7 +2184,7 @@ body[data-page="home"] .auth-home-step-card p {
 
 body[data-page="analysis"] .analysis-page,
 body[data-page="analyze"] .analysis-page,
-body[data-page="portfolio"] .portfolio-page {
+body[data-page="portfolio"] .analysis-page {
   zoom: 0.85;
   margin: 0 auto;
 }
@@ -2188,7 +2192,7 @@ body[data-page="portfolio"] .portfolio-page {
 @supports not (zoom: 1) {
   body[data-page="analysis"] .analysis-page,
   body[data-page="analyze"] .analysis-page,
-  body[data-page="portfolio"] .portfolio-page {
+  body[data-page="portfolio"] .analysis-page {
     transform: scale(0.85);
     transform-origin: top center;
     width: 118%;

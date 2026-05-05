@@ -3,130 +3,35 @@
 {% block title %}{{ t["brand.name"] }} | {{ t["title.portfolio"] }}{% endblock %}
 
 {% block content %}
-{% set best_product = portfolio_summary.best_performing_product %}
-{% set weakest_product = portfolio_summary.weakest_performing_product %}
-{% set highest_profit_product = portfolio_summary.highest_profit_product %}
-<div class="analysis-page portfolio-page">
+{% set top_product = portfolio_summary.top_expected_profit_product %}
+<div class="analysis-page">
     <section class="section-space">
         <div class="container">
-            <div class="page-heading page-heading-left mb-4">
-                <span class="eyebrow-pill">{{ t["portfolio.eyebrow"] }}</span>
-                <h1>{{ t["portfolio.title"] }}</h1>
-                <p>{{ t["portfolio.subtitle"] }}</p>
-                <div class="action-group justify-content-start mt-3">
-                    <a href="{{ localized_url('portfolio_export_csv') }}" class="btn btn-outline-secondary">{{ t["portfolio.export_comparison_csv"] }}</a>
-                    <a href="{{ localized_url('history_export_csv') }}" class="btn btn-outline-secondary">{{ t["portfolio.export_history_csv"] }}</a>
-                    <a href="{{ localized_url('history_export_json') }}" class="btn btn-dark">{{ t["portfolio.export_history_json"] }}</a>
-                </div>
-            </div>
-
-            {% with messages = get_flashed_messages(with_categories=true) %}
-            {% if messages %}
-            <div class="flash-stack mb-4">
-                {% for category, message in messages %}
-                <div class="alert alert-{{ 'success' if category == 'success' else 'danger' }} mb-2" role="alert">{{ message }}</div>
-                {% endfor %}
-            </div>
-            {% endif %}
-            {% endwith %}
-
-            {% if error_message %}
-            <div class="alert alert-danger mb-4" role="alert">{{ error_message }}</div>
-            {% endif %}
-
             <div class="analysis-workspace">
-                <div class="section-header mb-3">
-                    <div>
-                        <h2 class="section-title mb-1">{{ t["portfolio.summary.title"] }}</h2>
-                        <p class="text-muted mb-0">{{ t["portfolio.summary.subtitle"] }}</p>
-                    </div>
-                    <div class="action-group">
-                        <span class="soft-badge">{{ t["portfolio.summary.total_products"] }}: {{ portfolio_summary.total_products }}</span>
-                        <span class="soft-badge">{{ t["portfolio.summary.total_profit"] }}: {{ display_currency(portfolio_summary.total_profit) }}</span>
+                <div class="page-heading page-heading-left mb-4">
+                    <span class="eyebrow-pill">{{ t["portfolio.eyebrow"] }}</span>
+                    <h1>{{ t["portfolio.title"] }}</h1>
+                    <p>{{ t["portfolio.subtitle"] }}</p>
+                    <div class="action-group justify-content-start mt-3 d-print-none">
+                        <button type="button" class="btn btn-outline-secondary" onclick="window.print()">{{ t["portfolio.actions.print"] }}</button>
                     </div>
                 </div>
 
-                <div class="row g-3 mb-3">
-                    <div class="col-md-6 col-xl-3">
-                        <div class="metric-card summary-card">
-                            <span class="metric-label">{{ t["portfolio.summary.total_revenue"] }}</span>
-                            <div class="metric-value">{{ display_currency(portfolio_summary.total_revenue) }}</div>
-                            <p class="metric-note">{{ t["portfolio.summary.total_revenue_note"] }}</p>
-                        </div>
-                    </div>
-                    <div class="col-md-6 col-xl-3">
-                        <div class="metric-card summary-card">
-                            <span class="metric-label">{{ t["portfolio.summary.total_cost"] }}</span>
-                            <div class="metric-value">{{ display_currency(portfolio_summary.total_cost) }}</div>
-                            <p class="metric-note">{{ t["portfolio.summary.total_cost_note"] }}</p>
-                        </div>
-                    </div>
-                    <div class="col-md-6 col-xl-3">
-                        <div class="metric-card summary-card summary-card-primary">
-                            <span class="metric-label">{{ t["portfolio.summary.total_profit"] }}</span>
-                            <div class="metric-value">{{ display_currency(portfolio_summary.total_profit) }}</div>
-                            <p class="metric-note">{{ t["portfolio.summary.total_profit_note"] }}</p>
-                        </div>
-                    </div>
-                    <div class="col-md-6 col-xl-3">
-                        <div class="metric-card summary-card">
-                            <span class="metric-label">{{ t["portfolio.summary.average_margin"] }}</span>
-                            <div class="metric-value">{{ display_percent(portfolio_summary.average_margin) }}</div>
-                            <p class="metric-note">{{ t["portfolio.summary.average_margin_note"] }}</p>
-                        </div>
-                    </div>
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                <div class="flash-stack mb-4">
+                    {% for category, message in messages %}
+                    <div class="alert alert-{{ 'success' if category == 'success' else 'danger' }} mb-2" role="alert">{{ message }}</div>
+                    {% endfor %}
                 </div>
+                {% endif %}
+                {% endwith %}
 
-                <div class="row g-3 mb-4">
-                    <div class="col-md-6 col-xl-3">
-                        <div class="metric-card summary-card summary-card-primary">
-                            <span class="metric-label">{{ t["portfolio.summary.best_product"] }}</span>
-                            <div class="metric-value">{{ best_product.product_name if best_product else t["common.not_available"] }}</div>
-                            <p class="metric-note">
-                                {% if best_product %}
-                                {{ t["table.product_profit"] }}: {{ display_currency(best_product.product_profit) }} | {{ t["table.contribution_share"] }}: {{ display_percent(best_product.profit_contribution_share) }}
-                                {% else %}
-                                {{ t["portfolio.summary.empty_note"] }}
-                                {% endif %}
-                            </p>
-                        </div>
-                    </div>
-                    <div class="col-md-6 col-xl-3">
-                        <div class="metric-card summary-card">
-                            <span class="metric-label">{{ t["portfolio.summary.weakest_product"] }}</span>
-                            <div class="metric-value">{{ weakest_product.product_name if weakest_product else t["common.not_available"] }}</div>
-                            <p class="metric-note">
-                                {% if weakest_product %}
-                                {{ t["table.product_profit"] }}: {{ display_currency(weakest_product.product_profit) }} | {{ t["table.contribution_share"] }}: {{ display_percent(weakest_product.profit_contribution_share) }}
-                                {% else %}
-                                {{ t["portfolio.summary.empty_note"] }}
-                                {% endif %}
-                            </p>
-                        </div>
-                    </div>
-                    <div class="col-md-6 col-xl-3">
-                        <div class="metric-card summary-card">
-                            <span class="metric-label">{{ t["portfolio.summary.highest_profit_product"] }}</span>
-                            <div class="metric-value">{{ highest_profit_product.product_name if highest_profit_product else t["common.not_available"] }}</div>
-                            <p class="metric-note">
-                                {% if highest_profit_product %}
-                                {{ t["table.product_profit"] }}: {{ display_currency(highest_profit_product.product_profit) }} | {{ t["table.contribution_share"] }}: {{ display_percent(highest_profit_product.profit_contribution_share) }}
-                                {% else %}
-                                {{ t["portfolio.summary.empty_note"] }}
-                                {% endif %}
-                            </p>
-                        </div>
-                    </div>
-                    <div class="col-md-6 col-xl-3">
-                        <div class="metric-card summary-card">
-                            <span class="metric-label">{{ t["portfolio.summary.high_confidence"] }}</span>
-                            <div class="metric-value">{{ portfolio_summary.high_confidence_products }}</div>
-                            <p class="metric-note">{{ t["portfolio.summary.high_confidence_note"] }}</p>
-                        </div>
-                    </div>
-                </div>
+                {% if error_message %}
+                <div class="alert alert-danger mb-4" role="alert">{{ error_message }}</div>
+                {% endif %}
 
-                <div class="app-card">
+                <div class="app-card mb-3">
                     <div class="section-header mb-3">
                         <div>
                             <h2 class="section-title mb-1">{{ t["portfolio.list.title"] }}</h2>
@@ -146,7 +51,6 @@
                                     <th class="table-number">{{ t["table.expected_profit"] }}</th>
                                     <th class="table-number">{{ t["table.margin"] }}</th>
                                     <th>{{ t["table.confidence"] }}</th>
-                                    <th>{{ t["table.data_strength"] }}</th>
                                     <th>{{ t["table.updated"] }}</th>
                                     <th>{{ t["table.actions"] }}</th>
                                 </tr>
@@ -163,7 +67,6 @@
                                     <td class="table-number">{{ display_currency(row.expected_profit) }}</td>
                                     <td class="table-number">{{ display_percent(row.margin) }}</td>
                                     <td><span class="confidence-pill confidence-{{ row.confidence_level|lower }}">{{ t["confidence." ~ row.confidence_level] }}</span></td>
-                                    <td><span class="soft-badge">{{ t["portfolio.data_strength." ~ row.match_level] }}</span></td>
                                     <td>{{ row.updated_at|replace('T', ' ') }}</td>
                                     <td>
                                         <div class="table-actions">
@@ -181,6 +84,50 @@
                     {% else %}
                     <div class="empty-state empty-state-block">{{ t["portfolio.list.empty"] }}</div>
                     {% endif %}
+                </div>
+
+                <div class="section-header mt-4 mb-4">
+                    <div>
+                        <h2 class="section-title mb-1">{{ t["portfolio.summary.title"] }}</h2>
+                        <p class="text-muted mb-0">{{ t["portfolio.summary.subtitle"] }}</p>
+                    </div>
+                </div>
+
+                <div class="row g-3 mb-3">
+                    <div class="col-md-6 col-xl-3">
+                        <div class="metric-card summary-card">
+                            <span class="metric-label">{{ t["portfolio.summary.total_products"] }}</span>
+                            <div class="metric-value">{{ portfolio_summary.total_products }}</div>
+                            <p class="metric-note">{{ t["portfolio.summary.total_products_note"] }}</p>
+                        </div>
+                    </div>
+                    <div class="col-md-6 col-xl-3">
+                        <div class="metric-card summary-card summary-card-primary">
+                            <span class="metric-label">{{ t["portfolio.summary.total_expected_profit"] }}</span>
+                            <div class="metric-value">{{ display_currency(portfolio_summary.total_expected_profit) }}</div>
+                            <p class="metric-note">{{ t["portfolio.summary.total_expected_profit_note"] }}</p>
+                        </div>
+                    </div>
+                    <div class="col-md-6 col-xl-3">
+                        <div class="metric-card summary-card">
+                            <span class="metric-label">{{ t["portfolio.summary.average_profit_improvement"] }}</span>
+                            <div class="metric-value">{{ display_percent(portfolio_summary.average_profit_improvement_percent) }}</div>
+                            <p class="metric-note">{{ t["portfolio.summary.average_profit_improvement_note"] }}</p>
+                        </div>
+                    </div>
+                    <div class="col-md-6 col-xl-3">
+                        <div class="metric-card summary-card summary-card-primary">
+                            <span class="metric-label">{{ t["portfolio.summary.top_expected_profit_product"] }}</span>
+                            <div class="metric-value">{{ top_product.product_name if top_product else t["common.not_available"] }}</div>
+                            <p class="metric-note">
+                                {% if top_product %}
+                                {{ t["table.expected_profit"] }}: {{ display_currency(top_product.expected_profit) }}
+                                {% else %}
+                                {{ t["portfolio.summary.empty_note"] }}
+                                {% endif %}
+                            </p>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>

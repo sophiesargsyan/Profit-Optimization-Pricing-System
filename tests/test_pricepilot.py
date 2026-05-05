@@ -262,6 +262,9 @@ class WorkspaceStorageTests(unittest.TestCase):
         self.assertEqual(summary["total_products"], 1)
         self.assertIn("projected_total_cost", summary)
         self.assertIn("average_margin", summary)
+        self.assertIn("total_expected_profit", summary)
+        self.assertIn("average_profit_improvement_percent", summary)
+        self.assertIn("top_expected_profit_product", summary)
         self.assertIn("best_performing_product", summary)
         self.assertIn("weakest_performing_product", summary)
         self.assertIn("highest_profit_product", summary)
@@ -572,6 +575,9 @@ class FlaskAppTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertNotIn("User B Product", body)
+        self.assertIn("Saved analyses: 0", body)
+        self.assertIn("0.0%", body)
+        self.assertIn("N/A", body)
         self.assertIn("No saved analyses yet. Run an analysis to start your workspace history.", body)
 
     def test_history_export_json_returns_only_current_users_entries(self):
@@ -919,7 +925,7 @@ class FlaskAppTests(unittest.TestCase):
         self.assertIn("Row 3: min_price must be greater than 0.", body)
         self.assertIn("Row 3: max_price must be greater than 0.", body)
 
-    def test_portfolio_page_renders_financial_summary_and_contribution_analysis(self):
+    def test_portfolio_page_renders_user_focused_summary_and_print_action(self):
         with self.client as client:
             self._sign_up(client)
             client.post("/api/analyze", json=self.payload)
@@ -927,10 +933,15 @@ class FlaskAppTests(unittest.TestCase):
             body = response.get_data(as_text=True)
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn("Total Revenue", body)
-        self.assertIn("Total Cost", body)
-        self.assertIn("Total Profit", body)
-        self.assertIn("Contribution Share", body)
+        self.assertIn("Portfolio Summary Metrics", body)
+        self.assertIn("Saved analyses", body)
+        self.assertIn("Total expected profit", body)
+        self.assertIn("Average profit improvement", body)
+        self.assertIn("Best-performing product", body)
+        self.assertIn("Print analyses", body)
+        self.assertNotIn('href="/portfolio/export.csv"', body)
+        self.assertNotIn('href="/history/export.csv"', body)
+        self.assertNotIn('href="/history/export.json"', body)
 
     def test_api_validation_errors_are_consistent(self):
         invalid_payload = dict(self.payload)
