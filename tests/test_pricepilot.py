@@ -614,6 +614,20 @@ class FlaskAppTests(unittest.TestCase):
         self.assertIn("Budget risk assessment", body)
         self.assertIn("Product cost share is high. This may reduce profitability.", body)
         self.assertIn("Operational budget is low. This may limit day-to-day business operations.", body)
+        self.assertIn("Recommended budget allocation", body)
+        self.assertIn("The recommended allocation can reduce budget risks and improve expense control.", body)
+        self.assertIn("Platform/service budget", body)
+        self.assertIn("Exceeds the recommended amount by $100.00", body)
+        self.assertIn("Below the recommended amount by $50.00", body)
+        self.assertIn("Matches the recommended amount", body)
+        self.assertIn("Budget scenario comparison", body)
+        self.assertIn("Conservative", body)
+        self.assertIn("Balanced", body)
+        self.assertIn("Growth", body)
+        self.assertIn("Stable cost control", body)
+        self.assertIn("Low", body)
+        self.assertIn("Medium", body)
+        self.assertIn("High", body)
 
     def test_finance_page_shows_stable_risk_message_when_no_risks_detected(self):
         with self.client as client:
@@ -635,6 +649,9 @@ class FlaskAppTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn("Budget risk assessment", body)
         self.assertIn("Budget allocation is stable. Core expenses are within acceptable limits.", body)
+        self.assertIn("Recommended budget allocation", body)
+        self.assertIn("Your budget is close to the recommended stable allocation.", body)
+        self.assertIn("Budget scenario comparison", body)
 
     def test_finance_data_is_saved_after_post(self):
         with self.client as client:
@@ -1239,7 +1256,7 @@ class FlaskAppTests(unittest.TestCase):
 
         self.assertIn('href="/analyze?lang=en"', private_body)
         self.assertIn('href="/portfolio?lang=en"', private_body)
-        self.assertIn('href="/dashboard?lang=en"', private_body)
+        self.assertNotIn('href="/dashboard?lang=en"', private_body)
         self.assertIn('href="/finance?lang=en"', private_body)
         self.assertIn('href="/about?lang=en"', private_body)
         self.assertIn('action="/sign-out?lang=en"', private_body)

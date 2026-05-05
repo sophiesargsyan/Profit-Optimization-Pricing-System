@@ -3,6 +3,7 @@
 {% block title %}{{ t["brand.name"] }} | {{ t.get("title.finance", "Finance & Budget Management") }}{% endblock %}
 
 {% block content %}
+<div class="analysis-page">
 <section class="section-space">
     <div class="container">
         <div class="page-heading page-heading-left mb-4">
@@ -66,7 +67,7 @@
                     <h2 class="section-title mb-1">{{ t.get("finance.results.title", "Budget summary") }}</h2>
                     <p class="text-muted mb-0">{{ t.get("finance.results.subtitle", "Review the current allocation, remaining budget, and the status of the plan.") }}</p>
                 </div>
-                <span class="risk-pill {{ budget_summary.status_class }}">{{ t.get("finance.status." ~ budget_summary.status, budget_summary.status|title) }}</span>
+                <span class="risk-pill {{ budget_state.status_class }}">{{ budget_state.statusLabel }}</span>
             </div>
 
             <div class="row g-3 mb-4">
@@ -91,7 +92,7 @@
                 <div class="col-md-6 col-xl-3">
                     <div class="metric-card summary-card summary-card-primary finance-status-card">
                         <span class="metric-label">{{ t.get("finance.card.status", "Budget status") }}</span>
-                        <div class="metric-value finance-status-value">{{ t.get("finance.status." ~ budget_summary.status, budget_summary.status|title) }}</div>
+                        <div class="metric-value finance-status-value">{{ budget_state.statusLabel }}</div>
                     </div>
                 </div>
             </div>
@@ -136,7 +137,11 @@
 
                 {% for recommendation in recommendations %}
                 <div class="alert alert-{{ recommendation.tone }} {% if not loop.last %}mb-3{% else %}mb-0{% endif %}" role="alert">
+                    {% if recommendation.message is defined %}
+                    {{ recommendation.message }}
+                    {% else %}
                     {{ t.get(recommendation.key, recommendation.key) }}
+                    {% endif %}
                 </div>
                 {% endfor %}
             </div>
@@ -154,8 +159,143 @@
                 </div>
                 {% endfor %}
             </div>
+
+            <div class="app-card mt-4">
+                <div class="section-header mb-3">
+                    <div>
+                        <h2 class="section-title mb-1">{{ t.get("finance.recommended.title", "Recommended budget allocation") }}</h2>
+                        <p class="text-muted mb-0">{{ t.get("finance.recommended.subtitle", "The system suggests a balanced allocation to support more stable budget management.") }}</p>
+                    </div>
+                </div>
+
+                <div class="table-responsive">
+                    <table class="table align-middle comparison-table mb-0">
+                        <thead>
+                            <tr>
+                                <th>{{ t.get("finance.table.category", "Category") }}</th>
+                                <th class="table-number">{{ t.get("finance.recommended.amount", "Recommended amount") }}</th>
+                                <th class="table-number">{{ t.get("finance.recommended.percentage", "Recommended percentage") }}</th>
+                                <th>{{ t.get("finance.recommended.difference", "Difference") }}</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for row in recommended_budget.rows %}
+                            <tr>
+                                <td>{{ t.get(row.label_key, row.field_name.replace("_", " ")|title) }}</td>
+                                <td class="table-number">{{ display_currency(row.recommended_amount) }}</td>
+                                <td class="table-number">{{ display_percent(row.recommended_percentage) }}</td>
+                                <td>
+                                    <span class="table-meta finance-difference-text">
+                                    {% if row.difference_status == "match" %}
+                                    {{ t.get("finance.recommended.difference.match", "Matches the recommended amount") }}
+                                    {% elif row.difference_status == "over" %}
+                                    {{ t.get("finance.recommended.difference.over", "Exceeds the recommended amount by {amount}").format(amount=display_currency(row.difference_amount)) }}
+                                    {% else %}
+                                    {{ t.get("finance.recommended.difference.under", "Below the recommended amount by {amount}").format(amount=display_currency(row.difference_amount)) }}
+                                    {% endif %}
+                                    </span>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="alert alert-{{ recommended_budget.summary_tone }} mt-3 mb-0" role="alert">
+                    {{ t.get(recommended_budget.summary_key, recommended_budget.summary_key) }}
+                </div>
+            </div>
+
+            <div class="app-card mt-4">
+                <div class="section-header mb-3">
+                    <div>
+                        <h2 class="section-title mb-1">{{ t.get("finance.scenarios.title", "Budget scenario comparison") }}</h2>
+                        <p class="text-muted mb-0">{{ t.get("finance.scenarios.subtitle", "Compare conservative, balanced, and growth scenarios to see the possible budget impact.") }}</p>
+                    </div>
+                </div>
+
+                <div class="finance-scenario-recommendation mb-4">
+                    <div class="finance-scenario-recommendation-header">
+                        <div>
+                            <h3 class="section-title mb-1">{{ t.get("finance.scenarios.recommended.title", "Recommended scenario") }}</h3>
+                        </div>
+                        <span class="soft-badge">{{ t.get("finance.scenarios.recommended.badge", "Recommended") }}</span>
+                    </div>
+                    <div class="finance-scenario-recommendation-summary">
+                        <div>
+                            <div class="finance-scenario-recommendation-name">
+                                {{ budget_state.recommendedScenario }}
+                            </div>
+                            <div class="table-meta">{{ budget_state.scenarioGoal }}</div>
+                        </div>
+                        <span class="risk-pill {{ budget_state.scenario_risk_class }}">
+                            {{ budget_state.scenarioRiskLabel }}
+                        </span>
+                    </div>
+                    <p class="finance-scenario-recommendation-message mb-0">
+                        {{ budget_state.message }}
+                    </p>
+                </div>
+
+                <div class="finance-scenario-chart mb-4">
+                    {% for metric in scenario_comparison.chart_metrics %}
+                    <div class="finance-scenario-metric">
+                        <div class="finance-scenario-metric-title">{{ t.get(metric.label_key, metric.label_key) }}</div>
+                        <div class="finance-scenario-bar-list">
+                            {% for item in metric.bars %}
+                            <div class="finance-scenario-bar-row {% if item.is_recommended %}finance-scenario-bar-row-recommended{% endif %}">
+                                <div class="finance-scenario-bar-meta">
+                                    <span>{{ t.get(item.label_key, item.label_key) }}</span>
+                                    <span class="table-meta">{{ display_currency(item.value) }}</span>
+                                </div>
+                                <div class="finance-scenario-bar-track">
+                                    <span class="finance-scenario-bar {{ item.bar_class }}" style="width: {{ item.width_percent }}%;"></span>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+
+                <div class="table-responsive">
+                    <table class="table align-middle comparison-table mb-0">
+                        <thead>
+                            <tr>
+                                <th>{{ t.get("table.scenario", "Scenario") }}</th>
+                                <th class="table-number">{{ t.get("finance.card.allocated_amount", "Allocated amount") }}</th>
+                                <th class="table-number">{{ t.get("finance.card.remaining_budget", "Remaining budget") }}</th>
+                                <th class="table-number">{{ t.get("finance.field.marketing_budget", "Marketing budget") }}</th>
+                                <th class="table-number">{{ t.get("finance.field.operational_budget", "Operational budget") }}</th>
+                                <th>{{ t.get("table.risk", "Risk") }}</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for row in scenario_comparison.rows %}
+                            <tr class="{% if row.is_recommended %}finance-scenario-row-recommended{% endif %}">
+                                <td>
+                                    <div class="finance-scenario-name-row">
+                                        <span>{{ t.get(row.label_key, row.label_key) }}</span>
+                                        {% if row.is_recommended %}
+                                        <span class="soft-badge finance-scenario-inline-badge">{{ t.get("finance.scenarios.recommended.badge", "Recommended") }}</span>
+                                        {% endif %}
+                                    </div>
+                                    <div class="table-meta">{{ t.get(row.goal_key, row.goal_key) }}</div>
+                                </td>
+                                <td class="table-number">{{ display_currency(row.total_allocated_amount) }}</td>
+                                <td class="table-number">{{ display_currency(row.remaining_amount) }}</td>
+                                <td class="table-number">{{ display_currency(row.marketing_amount) }}</td>
+                                <td class="table-number">{{ display_currency(row.operational_amount) }}</td>
+                                <td><span class="risk-pill {{ row.risk_class }}">{{ t.get(row.risk_key, row.risk_key) }}</span></td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
             {% endif %}
         </div>
     </div>
 </section>
+</div>
 {% endblock %}

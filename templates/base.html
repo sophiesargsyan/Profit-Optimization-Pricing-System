@@ -25,7 +25,6 @@
                         <li class="nav-item"><a class="nav-link {% if page_name == 'home' %}active{% endif %}" href="{{ localized_url('index') }}">{{ t["nav.home"] }}</a></li>
                         <li class="nav-item"><a class="nav-link {% if page_name == 'analyze' %}active{% endif %}" href="{{ localized_url('analyze_page') }}">{{ t["nav.analyze"] }}</a></li>
                         <li class="nav-item"><a class="nav-link {% if page_name == 'portfolio' %}active{% endif %}" href="{{ localized_url('portfolio_page') }}">{{ t["nav.portfolio"] }}</a></li>
-                        <li class="nav-item"><a class="nav-link {% if page_name == 'dashboard' %}active{% endif %}" href="{{ localized_url('dashboard_page') }}">{{ t["nav.dashboard"] }}</a></li>
                         <li class="nav-item"><a class="nav-link {% if page_name == 'finance' %}active{% endif %}" href="{{ localized_url('finance_page') }}">{{ t.get("nav.finance", "Finance") }}</a></li>
                         <li class="nav-item"><a class="nav-link {% if page_name == 'about' %}active{% endif %}" href="{{ localized_url('about_page') }}">{{ t["nav.about"] }}</a></li>
                         {% else %}
@@ -56,7 +55,6 @@
                                 <li><h6 class="dropdown-header">{{ current_user.name }}</h6></li>
                                 <li><span class="dropdown-item-text small text-muted">{{ current_user.email }}</span></li>
                                 <li><hr class="dropdown-divider"></li>
-                                <li><a class="dropdown-item" href="{{ localized_url('dashboard_page') }}">{{ t["nav.dashboard"] }}</a></li>
                                 <li>
                                     <form method="post" action="{{ localized_url('sign_out') }}" class="mb-0">
                                         <button class="dropdown-item" type="submit">{{ t["nav.sign_out"] }}</button>

@@ -191,6 +191,61 @@ FINANCE_ALLOCATION_FIELDS = FINANCE_BUDGET_FIELDS[1:]
 FINANCE_STATUS_TOLERANCE = 0.01
 FINANCE_RESERVE_MIN_PERCENT = 10.0
 FINANCE_MARKETING_MAX_PERCENT = 30.0
+FINANCE_RECOMMENDED_ALLOCATION = (
+    ("product_cost_budget", 40.0),
+    ("marketing_budget", 25.0),
+    ("delivery_budget", 10.0),
+    ("packaging_budget", 5.0),
+    ("operational_budget", 12.0),
+    ("reserve_budget", 8.0),
+)
+FINANCE_SCENARIO_DEFINITIONS = (
+    {
+        "key": "conservative",
+        "label_key": "finance.scenario.conservative",
+        "goal_key": "finance.scenario.goal.conservative",
+        "risk_key": "risk.Low",
+        "risk_class": "risk-low",
+        "allocations": {
+            "product_cost_budget": 42.0,
+            "marketing_budget": 18.0,
+            "delivery_budget": 10.0,
+            "packaging_budget": 5.0,
+            "operational_budget": 17.0,
+            "reserve_budget": 8.0,
+        },
+    },
+    {
+        "key": "balanced",
+        "label_key": "finance.scenario.balanced",
+        "goal_key": "finance.scenario.goal.balanced",
+        "risk_key": "risk.Medium",
+        "risk_class": "risk-medium",
+        "allocations": {
+            "product_cost_budget": 40.0,
+            "marketing_budget": 25.0,
+            "delivery_budget": 10.0,
+            "packaging_budget": 5.0,
+            "operational_budget": 12.0,
+            "reserve_budget": 8.0,
+        },
+    },
+    {
+        "key": "growth",
+        "label_key": "finance.scenario.growth",
+        "goal_key": "finance.scenario.goal.growth",
+        "risk_key": "risk.High",
+        "risk_class": "risk-high",
+        "allocations": {
+            "product_cost_budget": 38.0,
+            "marketing_budget": 32.0,
+            "delivery_budget": 10.0,
+            "packaging_budget": 5.0,
+            "operational_budget": 7.0,
+            "reserve_budget": 8.0,
+        },
+    },
+)
 
 
 @dataclass
@@ -1116,6 +1171,68 @@ def _parse_finance_amount(value, field_name):
     return amount
 
 
+def getBudgetState(total_budget, remaining_budget):
+    if remaining_budget < 0:
+        state = "overspending"
+        recommended_scenario_key = "conservative"
+        status_key = "finance.status.overspending"
+        message_key = "finance.budget_state.message.overspending"
+        status_fallback = "Overspending"
+        message_fallback = "Budget has been exceeded. It is recommended to reduce expenses."
+        alert_tone = "danger"
+        status_class = "risk-high"
+    elif total_budget > 0 and (remaining_budget / total_budget) > 0.2:
+        state = "safe"
+        recommended_scenario_key = "growth"
+        status_key = "finance.status.safe"
+        message_key = "finance.budget_state.message.safe"
+        status_fallback = "Safe"
+        message_fallback = "There is free budget remaining. You can consider growth."
+        alert_tone = "warning"
+        status_class = "risk-medium"
+    else:
+        state = "balanced"
+        recommended_scenario_key = "balanced"
+        status_key = "finance.status.balanced"
+        message_key = "finance.budget_state.message.balanced"
+        status_fallback = "Balanced"
+        message_fallback = "Budget is balanced. Current allocations match the total budget."
+        alert_tone = "success"
+        status_class = "risk-low"
+
+    recommended_scenario = next(
+        scenario
+        for scenario in FINANCE_SCENARIO_DEFINITIONS
+        if scenario["key"] == recommended_scenario_key
+    )
+
+    return {
+        "state": state,
+        "recommendedScenario": translated_message(
+            recommended_scenario["label_key"],
+            recommended_scenario["key"].replace("_", " ").title(),
+        ),
+        "recommended_scenario_key": recommended_scenario_key,
+        "message": translated_message(message_key, message_fallback),
+        "message_key": message_key,
+        "statusLabel": translated_message(status_key, status_fallback),
+        "status_key": status_key,
+        "status_class": status_class,
+        "alert_tone": alert_tone,
+        "scenarioGoal": translated_message(
+            recommended_scenario["goal_key"],
+            recommended_scenario["key"].replace("_", " ").title(),
+        ),
+        "scenario_goal_key": recommended_scenario["goal_key"],
+        "scenarioRiskLabel": translated_message(
+            recommended_scenario["risk_key"],
+            recommended_scenario["risk_key"].split(".")[-1],
+        ),
+        "scenario_risk_key": recommended_scenario["risk_key"],
+        "scenario_risk_class": recommended_scenario["risk_class"],
+    }
+
+
 def _build_finance_budget_results(form_values):
     values = {
         field_name: _parse_finance_amount(form_values.get(field_name, ""), field_name)
@@ -1127,12 +1244,9 @@ def _build_finance_budget_results(form_values):
     remaining_budget = round(total_budget - allocated_amount, 2)
 
     if abs(remaining_budget) < FINANCE_STATUS_TOLERANCE:
-        status = "balanced"
         remaining_budget = 0.0
-    elif remaining_budget < 0:
-        status = "overallocated"
-    else:
-        status = "underallocated"
+
+    budget_state = getBudgetState(total_budget, remaining_budget)
 
     rows = []
     for field_name in FINANCE_ALLOCATION_FIELDS:
@@ -1153,29 +1267,114 @@ def _build_finance_budget_results(form_values):
         row["percentage"] for row in rows if row["field_name"] == "marketing_budget"
     )
 
-    recommendations = []
-    if allocated_amount > total_budget + FINANCE_STATUS_TOLERANCE:
-        recommendations.append({"tone": "danger", "key": "finance.recommendation.overallocated"})
-    if status == "underallocated":
-        recommendations.append({"tone": "info", "key": "finance.recommendation.underallocated"})
+    recommendations = [{"tone": budget_state["alert_tone"], "message": budget_state["message"]}]
     if total_budget > 0 and reserve_percent < FINANCE_RESERVE_MIN_PERCENT:
         recommendations.append({"tone": "warning", "key": "finance.recommendation.reserve_low"})
     if total_budget > 0 and marketing_percent > FINANCE_MARKETING_MAX_PERCENT:
         recommendations.append({"tone": "warning", "key": "finance.recommendation.marketing_high"})
-    if status == "balanced":
-        recommendations.append({"tone": "success", "key": "finance.recommendation.balanced"})
 
     budget_risks = []
+    has_budget_risks = False
     if total_budget > 0 and values["marketing_budget"] > total_budget * 0.35:
         budget_risks.append({"tone": "warning", "key": "finance.risk.marketing_high"})
+        has_budget_risks = True
     if total_budget > 0 and values["product_cost_budget"] > total_budget * 0.5:
         budget_risks.append({"tone": "warning", "key": "finance.risk.product_cost_high"})
+        has_budget_risks = True
     if total_budget > 0 and values["operational_budget"] < total_budget * 0.1:
         budget_risks.append({"tone": "warning", "key": "finance.risk.operational_low"})
+        has_budget_risks = True
     if remaining_budget < 0:
         budget_risks.append({"tone": "danger", "key": "finance.risk.overallocated"})
+        has_budget_risks = True
     if not budget_risks:
         budget_risks.append({"tone": "success", "key": "finance.risk.stable"})
+
+    recommended_budget_rows = []
+    for field_name, recommended_percentage in FINANCE_RECOMMENDED_ALLOCATION:
+        recommended_amount = round(total_budget * (recommended_percentage / 100), 2)
+        entered_amount = values[field_name]
+        difference = round(entered_amount - recommended_amount, 2)
+
+        if abs(difference) < FINANCE_STATUS_TOLERANCE:
+            difference_status = "match"
+            difference_amount = 0.0
+        elif difference > 0:
+            difference_status = "over"
+            difference_amount = difference
+        else:
+            difference_status = "under"
+            difference_amount = abs(difference)
+
+        recommended_budget_rows.append(
+            {
+                "field_name": field_name,
+                "label_key": (
+                    "finance.recommended.field.reserve_budget"
+                    if field_name == "reserve_budget"
+                    else f"finance.field.{field_name}"
+                ),
+                "recommended_amount": recommended_amount,
+                "recommended_percentage": recommended_percentage,
+                "difference_status": difference_status,
+                "difference_amount": difference_amount,
+            }
+        )
+
+    scenario_rows = []
+    for scenario in FINANCE_SCENARIO_DEFINITIONS:
+        allocations = scenario["allocations"]
+        total_allocated_amount = round(
+            sum(total_budget * (percentage / 100) for percentage in allocations.values()),
+            2,
+        )
+        remaining_amount = round(total_budget - total_allocated_amount, 2)
+        if abs(remaining_amount) < FINANCE_STATUS_TOLERANCE:
+            remaining_amount = 0.0
+
+        scenario_rows.append(
+            {
+                "key": scenario["key"],
+                "label_key": scenario["label_key"],
+                "goal_key": scenario["goal_key"],
+                "risk_key": scenario["risk_key"],
+                "risk_class": scenario["risk_class"],
+                "total_allocated_amount": total_allocated_amount,
+                "remaining_amount": remaining_amount,
+                "marketing_amount": round(total_budget * (allocations["marketing_budget"] / 100), 2),
+                "operational_amount": round(total_budget * (allocations["operational_budget"] / 100), 2),
+                "is_recommended": scenario["key"] == budget_state["recommended_scenario_key"],
+            }
+        )
+
+    scenario_chart_metrics = []
+    for metric_key, label_key in (
+        ("marketing_amount", "finance.field.marketing_budget"),
+        ("operational_amount", "finance.field.operational_budget"),
+        ("remaining_amount", "finance.card.remaining_budget"),
+    ):
+        max_value = max((row[metric_key] for row in scenario_rows), default=0.0)
+        items = []
+        for row in scenario_rows:
+            value = row[metric_key]
+            width_percent = round((value / max_value) * 100, 1) if max_value > 0 else 0.0
+            items.append(
+                {
+                    "scenario_key": row["key"],
+                    "label_key": row["label_key"],
+                    "value": value,
+                    "width_percent": width_percent,
+                    "bar_class": f"finance-scenario-bar-{row['key']}",
+                    "is_recommended": row["is_recommended"],
+                }
+            )
+        scenario_chart_metrics.append(
+            {
+                "metric_key": metric_key,
+                "label_key": label_key,
+                "bars": items,
+            }
+        )
 
     return {
         "values": values,
@@ -1183,25 +1382,36 @@ def _build_finance_budget_results(form_values):
             "total_budget": total_budget,
             "allocated_amount": allocated_amount,
             "remaining_budget": remaining_budget,
-            "status": status,
-            "status_class": {
-                "balanced": "risk-low",
-                "overallocated": "risk-high",
-                "underallocated": "risk-medium",
-            }[status],
         },
+        "budget_state": budget_state,
         "budget_rows": rows,
         "recommendations": recommendations,
         "budget_risks": budget_risks,
+        "recommended_budget": {
+            "rows": recommended_budget_rows,
+            "summary_tone": "info" if has_budget_risks else "success",
+            "summary_key": (
+                "finance.recommended.summary.risks"
+                if has_budget_risks
+                else "finance.recommended.summary.stable"
+            ),
+        },
+        "scenario_comparison": {
+            "rows": scenario_rows,
+            "chart_metrics": scenario_chart_metrics,
+        },
     }
 
 
 def render_finance_page(
     form_values=None,
     budget_summary=None,
+    budget_state=None,
     budget_rows=None,
     recommendations=None,
     budget_risks=None,
+    recommended_budget=None,
+    scenario_comparison=None,
     error_message=None,
     status=200,
 ):
@@ -1211,9 +1421,13 @@ def render_finance_page(
             page_name="finance",
             form_values=_finance_form_values(form_values),
             budget_summary=budget_summary,
+            budget_state=budget_state or {},
             budget_rows=budget_rows or [],
             recommendations=recommendations or [],
             budget_risks=budget_risks or [],
+            recommended_budget=recommended_budget
+            or {"rows": [], "summary_tone": "success", "summary_key": ""},
+            scenario_comparison=scenario_comparison or {"rows": [], "chart_metrics": []},
             error_message=error_message,
         ),
         status,
@@ -1795,9 +2009,12 @@ def finance_page():
         return render_finance_page(
             form_values=saved_record,
             budget_summary=finance_results["budget_summary"],
+            budget_state=finance_results["budget_state"],
             budget_rows=finance_results["budget_rows"],
             recommendations=finance_results["recommendations"],
             budget_risks=finance_results["budget_risks"],
+            recommended_budget=finance_results["recommended_budget"],
+            scenario_comparison=finance_results["scenario_comparison"],
         )
 
     saved_record = get_finance_record(get_finance_file(), user_id=_current_user_id())
@@ -1808,9 +2025,12 @@ def finance_page():
     return render_finance_page(
         form_values=saved_record,
         budget_summary=finance_results["budget_summary"],
+        budget_state=finance_results["budget_state"],
         budget_rows=finance_results["budget_rows"],
         recommendations=finance_results["recommendations"],
         budget_risks=finance_results["budget_risks"],
+        recommended_budget=finance_results["recommended_budget"],
+        scenario_comparison=finance_results["scenario_comparison"],
     )
 
 
