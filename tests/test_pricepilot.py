@@ -350,6 +350,19 @@ class FlaskAppTests(unittest.TestCase):
         payload.update(overrides)
         return client.post("/sign-in?lang=en", data=payload)
 
+    def _save_finance(self, client, **overrides):
+        payload = {
+            "total_budget": "1000",
+            "product_cost_budget": "400",
+            "marketing_budget": "300",
+            "delivery_budget": "80",
+            "packaging_budget": "40",
+            "operational_budget": "130",
+            "reserve_budget": "150",
+        }
+        payload.update(overrides)
+        return client.post("/finance?lang=en", data=payload)
+
     def _user_by_email(self, email):
         normalized_email = email.strip().lower()
         return next(user for user in load_users(self.users_file) if user["email"] == normalized_email)
@@ -472,6 +485,56 @@ class FlaskAppTests(unittest.TestCase):
         self.assertIn("title", data["data"]["explanation"])
         self.assertGreater(len(data["data"]["explanation"]["assumption_cards"]), 0)
         self.assertIn("overall_confidence", data["data"])
+        self.assertIsNone(data["data"]["finance_insights"])
+
+    def test_api_analyze_adds_finance_warnings_from_saved_budget_data(self):
+        with self.client as client:
+            self._sign_up(client)
+            self._save_finance(
+                client,
+                product_cost_budget="700",
+                marketing_budget="150",
+                reserve_budget="50",
+            )
+            response = client.post("/api/analyze", json=self.payload)
+            data = response.get_json()
+
+        self.assertTrue(data["success"])
+        self.assertEqual(
+            data["data"]["finance_insights"]["items"],
+            [
+                {
+                    "level": "warning",
+                    "message": "Քո մարքեթինգի բյուջեն կարող է բավարար չլինել առաջարկվող գնային ռազմավարության համար",
+                },
+                {
+                    "level": "warning",
+                    "message": "Ապրանքի ինքնարժեքի բաժինը բարձր է, ինչը կարող է սահմանափակել շահույթի աճը",
+                },
+                {
+                    "level": "info",
+                    "message": "Խորհուրդ է տրվում պահուստը պահել առնվազն 10–15%",
+                },
+            ],
+        )
+
+    def test_api_analyze_adds_aligned_finance_message_when_no_issues_found(self):
+        with self.client as client:
+            self._sign_up(client)
+            self._save_finance(client)
+            response = client.post("/api/analyze", json=self.payload)
+            data = response.get_json()
+
+        self.assertTrue(data["success"])
+        self.assertEqual(
+            data["data"]["finance_insights"]["items"],
+            [
+                {
+                    "level": "info",
+                    "message": "Բյուջեն համահունչ է ընտրված ռազմավարությանը",
+                }
+            ],
+        )
 
     def test_api_analyze_saves_history_entry(self):
         with self.client as client:
@@ -548,6 +611,30 @@ class FlaskAppTests(unittest.TestCase):
         self.assertIn("Reserve budget is below 10% of the total budget.", body)
         self.assertIn("Marketing budget is above 30% of the total budget.", body)
         self.assertIn("Budget is balanced. Current allocations match the total budget.", body)
+        self.assertIn("Budget risk assessment", body)
+        self.assertIn("Product cost share is high. This may reduce profitability.", body)
+        self.assertIn("Operational budget is low. This may limit day-to-day business operations.", body)
+
+    def test_finance_page_shows_stable_risk_message_when_no_risks_detected(self):
+        with self.client as client:
+            self._sign_up(client)
+            response = client.post(
+                "/finance?lang=en",
+                data={
+                    "total_budget": "1000",
+                    "product_cost_budget": "400",
+                    "marketing_budget": "200",
+                    "delivery_budget": "100",
+                    "packaging_budget": "50",
+                    "operational_budget": "120",
+                    "reserve_budget": "130",
+                },
+            )
+            body = response.get_data(as_text=True)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Budget risk assessment", body)
+        self.assertIn("Budget allocation is stable. Core expenses are within acceptable limits.", body)
 
     def test_finance_data_is_saved_after_post(self):
         with self.client as client:
@@ -1181,16 +1268,18 @@ class FlaskAppTests(unittest.TestCase):
         self.assertNotIn('class="footer-copy"', private_dashboard_footer)
         self.assertNotIn("btn btn-outline-secondary btn-sm", private_dashboard_footer)
 
-    def test_about_page_uses_simplified_three_section_structure(self):
+    def test_about_page_uses_about_us_structure(self):
         with self.client as client:
             self._sign_up(client)
             response = client.get("/about?lang=en")
             body = response.get_data(as_text=True)
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn("<h1>About the system</h1>", body)
-        self.assertIn("<h2>Core capabilities</h2>", body)
-        self.assertIn("<h2>Why it is useful</h2>", body)
+        self.assertIn(">About Us</h1>", body)
+        self.assertIn("What problem the system solves", body)
+        self.assertIn("What PricePilot does", body)
+        self.assertIn("Who it is for", body)
+        self.assertIn("System goal", body)
         self.assertNotIn("about-hero-card", body)
         self.assertNotIn("about-help-card", body)
         self.assertNotIn("about-closing-card", body)

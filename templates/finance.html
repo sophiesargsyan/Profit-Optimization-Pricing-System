@@ -89,9 +89,9 @@
                     </div>
                 </div>
                 <div class="col-md-6 col-xl-3">
-                    <div class="metric-card summary-card summary-card-primary">
+                    <div class="metric-card summary-card summary-card-primary finance-status-card">
                         <span class="metric-label">{{ t.get("finance.card.status", "Budget status") }}</span>
-                        <div class="metric-value">{{ t.get("finance.status." ~ budget_summary.status, budget_summary.status|title) }}</div>
+                        <div class="metric-value finance-status-value">{{ t.get("finance.status." ~ budget_summary.status, budget_summary.status|title) }}</div>
                     </div>
                 </div>
             </div>
@@ -137,6 +137,20 @@
                 {% for recommendation in recommendations %}
                 <div class="alert alert-{{ recommendation.tone }} {% if not loop.last %}mb-3{% else %}mb-0{% endif %}" role="alert">
                     {{ t.get(recommendation.key, recommendation.key) }}
+                </div>
+                {% endfor %}
+            </div>
+
+            <div class="app-card mt-4">
+                <div class="section-header mb-3">
+                    <div>
+                        <h2 class="section-title mb-1">{{ t.get("finance.risks.title", "Budget risk assessment") }}</h2>
+                    </div>
+                </div>
+
+                {% for risk in budget_risks %}
+                <div class="alert alert-{{ risk.tone }} {% if not loop.last %}mb-3{% else %}mb-0{% endif %}" role="alert">
+                    {{ t.get(risk.key, risk.key) }}
                 </div>
                 {% endfor %}
             </div>

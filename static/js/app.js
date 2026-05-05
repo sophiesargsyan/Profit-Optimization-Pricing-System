@@ -362,6 +362,33 @@ function renderFinancialImpact(data) {
     });
 }
 
+function renderFinanceInsights(financeInsights) {
+    const section = document.getElementById("financeInsightsSection");
+    const container = document.getElementById("financeInsightsList");
+    if (!section || !container) {
+        return;
+    }
+
+    container.replaceChildren();
+    const items = financeInsights?.items || [];
+    if (items.length === 0) {
+        section.hidden = true;
+        return;
+    }
+
+    items.forEach((item) => {
+        const message = createElement(
+            "div",
+            item.level === "warning" ? "alert alert-warning mb-0" : "alert alert-info mb-0"
+        );
+        message.setAttribute("role", "alert");
+        message.textContent = item.message;
+        container.appendChild(message);
+    });
+
+    section.hidden = false;
+}
+
 function renderAdvancedMetrics(data) {
     const container = document.getElementById("advancedMetricGrid");
     if (!container) {
@@ -607,6 +634,7 @@ async function runAnalysis(form, options = {}) {
         setAnalysisResultsVisible(true);
         renderBestStrategyHighlight(data);
         renderFinancialImpact(data);
+        renderFinanceInsights(data.finance_insights);
         renderAdvancedMetrics(data);
         renderAssumptions(data);
         renderStrategyTable(data.strategies, data.best_strategy.strategy);
@@ -619,6 +647,7 @@ async function runAnalysis(form, options = {}) {
         );
     } catch (error) {
         setAnalysisResultsVisible(false);
+        renderFinanceInsights(null);
         setAlert(error.message);
         setStatus(tr("js.analysis_failed"), true);
     } finally {

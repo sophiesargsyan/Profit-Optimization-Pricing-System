@@ -995,6 +995,95 @@ def _finance_field_label(field_name):
     )
 
 
+def _safe_budget_ratio(amount, total_budget):
+    total = float(total_budget or 0.0)
+    if total <= 0:
+        return None
+    return float(amount or 0.0) / total
+
+
+def _build_analysis_finance_insights(result):
+    finance_record = get_finance_record(get_finance_file(), user_id=_current_user_id())
+    if finance_record is None:
+        return None
+
+    total_budget = float(finance_record.get("total_budget", 0.0) or 0.0)
+    if total_budget <= 0:
+        return None
+
+    best_strategy = result.get("best_strategy") or {}
+    current_option = result.get("current_option") or {}
+    product_data = result.get("product") or {}
+
+    marketing_budget = float(finance_record.get("marketing_budget", 0.0) or 0.0)
+    product_cost_budget = float(finance_record.get("product_cost_budget", 0.0) or 0.0)
+    reserve_budget = float(finance_record.get("reserve_budget", 0.0) or 0.0)
+
+    best_demand = float(best_strategy.get("demand", 0.0) or 0.0)
+    current_demand = float(
+        current_option.get("demand", product_data.get("units_sold_30d", 0.0)) or 0.0
+    )
+    best_price = float(best_strategy.get("price", 0.0) or 0.0)
+    current_price = float(
+        current_option.get("price", product_data.get("current_price", 0.0)) or 0.0
+    )
+
+    demand_increase_is_high = False
+    if current_demand > 0 and best_demand >= current_demand * 1.2:
+        demand_increase_is_high = True
+    elif current_price > 0 and abs(best_price - current_price) / current_price >= 0.1:
+        demand_increase_is_high = True
+
+    insights = []
+
+    if marketing_budget < total_budget * 0.2 and demand_increase_is_high:
+        insights.append(
+            {
+                "level": "warning",
+                "message": translated_message(
+                    "analyze.finance_insights.marketing_warning",
+                    "Քո մարքեթինգի բյուջեն կարող է բավարար չլինել առաջարկվող գնային ռազմավարության համար",
+                ),
+            }
+        )
+
+    product_cost_ratio = _safe_budget_ratio(product_cost_budget, total_budget)
+    if product_cost_ratio is not None and product_cost_ratio > 0.6:
+        insights.append(
+            {
+                "level": "warning",
+                "message": translated_message(
+                    "analyze.finance_insights.cost_pressure_warning",
+                    "Ապրանքի ինքնարժեքի բաժինը բարձր է, ինչը կարող է սահմանափակել շահույթի աճը",
+                ),
+            }
+        )
+
+    if reserve_budget < total_budget * 0.1:
+        insights.append(
+            {
+                "level": "info",
+                "message": translated_message(
+                    "analyze.finance_insights.reserve_info",
+                    "Խորհուրդ է տրվում պահուստը պահել առնվազն 10–15%",
+                ),
+            }
+        )
+
+    if not insights:
+        insights.append(
+            {
+                "level": "info",
+                "message": translated_message(
+                    "analyze.finance_insights.aligned",
+                    "Բյուջեն համահունչ է ընտրված ռազմավարությանը",
+                ),
+            }
+        )
+
+    return {"items": insights}
+
+
 def _parse_finance_amount(value, field_name):
     raw_value = str(value or "").strip()
     if not raw_value:
@@ -1076,6 +1165,18 @@ def _build_finance_budget_results(form_values):
     if status == "balanced":
         recommendations.append({"tone": "success", "key": "finance.recommendation.balanced"})
 
+    budget_risks = []
+    if total_budget > 0 and values["marketing_budget"] > total_budget * 0.35:
+        budget_risks.append({"tone": "warning", "key": "finance.risk.marketing_high"})
+    if total_budget > 0 and values["product_cost_budget"] > total_budget * 0.5:
+        budget_risks.append({"tone": "warning", "key": "finance.risk.product_cost_high"})
+    if total_budget > 0 and values["operational_budget"] < total_budget * 0.1:
+        budget_risks.append({"tone": "warning", "key": "finance.risk.operational_low"})
+    if remaining_budget < 0:
+        budget_risks.append({"tone": "danger", "key": "finance.risk.overallocated"})
+    if not budget_risks:
+        budget_risks.append({"tone": "success", "key": "finance.risk.stable"})
+
     return {
         "values": values,
         "budget_summary": {
@@ -1091,6 +1192,7 @@ def _build_finance_budget_results(form_values):
         },
         "budget_rows": rows,
         "recommendations": recommendations,
+        "budget_risks": budget_risks,
     }
 
 
@@ -1099,6 +1201,7 @@ def render_finance_page(
     budget_summary=None,
     budget_rows=None,
     recommendations=None,
+    budget_risks=None,
     error_message=None,
     status=200,
 ):
@@ -1110,6 +1213,7 @@ def render_finance_page(
             budget_summary=budget_summary,
             budget_rows=budget_rows or [],
             recommendations=recommendations or [],
+            budget_risks=budget_risks or [],
             error_message=error_message,
         ),
         status,
@@ -1693,6 +1797,7 @@ def finance_page():
             budget_summary=finance_results["budget_summary"],
             budget_rows=finance_results["budget_rows"],
             recommendations=finance_results["recommendations"],
+            budget_risks=finance_results["budget_risks"],
         )
 
     saved_record = get_finance_record(get_finance_file(), user_id=_current_user_id())
@@ -1705,6 +1810,7 @@ def finance_page():
         budget_summary=finance_results["budget_summary"],
         budget_rows=finance_results["budget_rows"],
         recommendations=finance_results["recommendations"],
+        budget_risks=finance_results["budget_risks"],
     )
 
 
@@ -1970,6 +2076,8 @@ def api_analyze():
     try:
         product = parse_product(data)
         result = analyze_product(product)
+        localized_result = localize_analysis_result(result, g.current_lang)
+        localized_result["finance_insights"] = _build_analysis_finance_insights(result)
 
         if _boolean_input(data.get("save_history"), default=True):
             append_history_entry(
@@ -1982,7 +2090,7 @@ def api_analyze():
                 user_id=_current_user_id(),
             )
 
-        return api_success(localize_analysis_result(result, g.current_lang))
+        return api_success(localized_result)
     except ValueError as exc:
         app.logger.info("Validation error on /api/analyze: %s", exc)
         return api_error(str(exc), status=400)

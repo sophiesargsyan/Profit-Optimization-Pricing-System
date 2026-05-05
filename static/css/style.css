@@ -236,7 +236,9 @@ body {
 
 body[data-page="analysis"] .page-heading.page-heading-left,
 body[data-page="analyze"] .page-heading.page-heading-left,
-body[data-page="portfolio"] .page-heading.page-heading-left {
+body[data-page="portfolio"] .page-heading.page-heading-left,
+body[data-page="about"] .page-heading.page-heading-left,
+body[data-page="finance"] .page-heading.page-heading-left {
     max-width: 72rem !important;
     width: 100% !important;
     margin-left: auto;
@@ -245,7 +247,9 @@ body[data-page="portfolio"] .page-heading.page-heading-left {
 
 body[data-page="analysis"] .page-heading.page-heading-left h1,
 body[data-page="analyze"] .page-heading.page-heading-left h1,
-body[data-page="portfolio"] .page-heading.page-heading-left h1 {
+body[data-page="portfolio"] .page-heading.page-heading-left h1,
+body[data-page="about"] .page-heading.page-heading-left h1,
+body[data-page="finance"] .page-heading.page-heading-left h1 {
     max-width: 68rem !important;
     font-size: clamp(1.8rem, 3.2vw, 3rem) !important;
     line-height: 1.12 !important;
@@ -253,7 +257,9 @@ body[data-page="portfolio"] .page-heading.page-heading-left h1 {
 
 body[data-page="analysis"] .page-heading.page-heading-left p,
 body[data-page="analyze"] .page-heading.page-heading-left p,
-body[data-page="portfolio"] .page-heading.page-heading-left p {
+body[data-page="portfolio"] .page-heading.page-heading-left p,
+body[data-page="about"] .page-heading.page-heading-left p,
+body[data-page="finance"] .page-heading.page-heading-left p {
     max-width: 58rem !important;
 }
 
@@ -411,6 +417,15 @@ body[data-page="portfolio"] .analysis-workspace > .page-heading.page-heading-lef
 .summary-card .metric-note {
     color: var(--muted);
     margin: 0;
+}
+
+body[data-page="finance"] .finance-status-value {
+    font-size: clamp(1rem, 1.5vw, 1.15rem);
+    line-height: 1.3;
+    letter-spacing: -0.02em;
+    overflow-wrap: anywhere;
+    word-break: normal;
+    font-variant-numeric: normal;
 }
 
 .highlight-card {
@@ -2184,7 +2199,8 @@ body[data-page="home"] .auth-home-step-card p {
 
 body[data-page="analysis"] .analysis-page,
 body[data-page="analyze"] .analysis-page,
-body[data-page="portfolio"] .analysis-page {
+body[data-page="portfolio"] .analysis-page,
+body[data-page="about"] .analysis-page {
   zoom: 0.85;
   margin: 0 auto;
 }
@@ -2192,7 +2208,8 @@ body[data-page="portfolio"] .analysis-page {
 @supports not (zoom: 1) {
   body[data-page="analysis"] .analysis-page,
   body[data-page="analyze"] .analysis-page,
-  body[data-page="portfolio"] .analysis-page {
+  body[data-page="portfolio"] .analysis-page,
+  body[data-page="about"] .analysis-page {
     transform: scale(0.85);
     transform-origin: top center;
     width: 118%;
