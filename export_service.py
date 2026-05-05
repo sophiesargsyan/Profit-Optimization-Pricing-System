@@ -20,13 +20,17 @@ PORTFOLIO_EXPORT_FIELDS = [
 ]
 
 HISTORY_EXPORT_FIELDS = [
-    "timestamp",
+    "created_at",
+    "analysis_type",
     "product_name",
+    "category",
     "selected_scenario",
     "recommended_strategy",
+    "current_price",
     "recommended_price",
     "projected_demand",
     "expected_profit",
+    "profit_change",
     "confidence_level",
 ]
 

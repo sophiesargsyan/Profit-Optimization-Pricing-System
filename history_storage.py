@@ -22,3 +22,18 @@ def append_history_entry(file_path, entry, user_id=None):
     entries.append(record)
     save_history(file_path, entries)
     return record
+
+
+def delete_history_entry(file_path, entry_id, user_id=None):
+    entries = load_history(file_path)
+    filtered = [
+        entry
+        for entry in entries
+        if entry.get("id") != entry_id
+        or (user_id is not None and entry.get("user_id") != user_id)
+    ]
+    if len(filtered) == len(entries):
+        return False
+
+    save_history(file_path, filtered)
+    return True

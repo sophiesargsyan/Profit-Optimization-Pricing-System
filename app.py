@@ -40,12 +40,9 @@ from financial_formatting import (
     format_percent_value,
     format_signed_currency_value,
 )
-from history_storage import append_history_entry, load_history
+from history_storage import append_history_entry, delete_history_entry, load_history
 from portfolio_storage import (
     add_portfolio_product,
-    delete_portfolio_product,
-    get_portfolio_product,
-    load_portfolio,
     update_portfolio_product,
 )
 from pricing_engine import ProductData
@@ -325,17 +322,35 @@ def _current_user_id():
     return user.get("id") if user else None
 
 
-def _current_user_portfolio_products():
-    return _sort_portfolio_products(
-        load_portfolio(get_portfolio_file(), user_id=_current_user_id())
-    )
+def _history_sort_key(entry):
+    return entry.get("created_at") or entry.get("timestamp") or ""
 
 
 def _current_user_history_entries():
-    return [
+    return sorted(
+        [
         {key: value for key, value in entry.items() if key != "user_id"}
         for entry in load_history(get_history_file(), user_id=_current_user_id())
-    ]
+        ],
+        key=_history_sort_key,
+        reverse=True,
+    )
+
+
+def _history_entry_product(entry):
+    input_snapshot = entry.get("input_data")
+    if isinstance(input_snapshot, dict) and input_snapshot.get("name"):
+        return product_record_to_data(input_snapshot)
+    return None
+
+
+def _history_entry_analysis_result(entry):
+    stored_result = entry.get("result_data")
+    if isinstance(stored_result, dict) and stored_result.get("best_strategy") and stored_result.get("product"):
+        return stored_result
+
+    product = _history_entry_product(entry)
+    return analyze_product(product) if product else None
 
 
 def protected_url(endpoint=None, **kwargs):
@@ -869,29 +884,19 @@ def inject_i18n():
 
 
 def render_portfolio_workspace(form_values=None, edit_product_id=None, error_message=None, status=200):
-    portfolio_products = _current_user_portfolio_products()
-    comparison_rows = build_portfolio_comparison(portfolio_products) if portfolio_products else []
-    history_entries = list(reversed(_current_user_history_entries()))
-    editing_product = (
-        get_portfolio_product(
-            get_portfolio_file(),
-            edit_product_id,
-            user_id=_current_user_id(),
-        )
-        if edit_product_id
-        else None
-    )
+    history_entries = _current_user_history_entries()
+    comparison_rows = build_portfolio_comparison(history_entries) if history_entries else []
 
     return (
         render_template(
             "portfolio.html",
             page_name="portfolio",
-            portfolio_products=portfolio_products,
+            portfolio_products=[],
             comparison_rows=comparison_rows,
             history_entries=history_entries,
             portfolio_summary=summarize_portfolio(comparison_rows, history_entries),
-            form_values=_portfolio_form_values(form_values or editing_product),
-            editing_product=editing_product,
+            form_values=_portfolio_form_values(form_values),
+            editing_product=None,
             error_message=error_message,
             categories=sorted(CATEGORY_PROFILES),
         ),
@@ -1381,7 +1386,7 @@ def _bulk_summary_row(product_input, analysis):
     }
 
 
-def process_bulk_analysis_products(products):
+def process_bulk_analysis_products(products, history_file=None, user_id=None):
     result = {
         "summary": {
             "total_products": len(products),
@@ -1396,6 +1401,16 @@ def process_bulk_analysis_products(products):
         try:
             analysis = analyze_product(product)
             result["products"].append(_bulk_summary_row(product, analysis))
+            if history_file is not None and user_id is not None:
+                append_history_entry(
+                    history_file,
+                    build_history_entry(
+                        analysis,
+                        input_data=product,
+                        analysis_type="bulk",
+                    ),
+                    user_id=user_id,
+                )
         except Exception as exc:
             app.logger.info("Bulk analysis failed for row %s: %s", product.get("row_number"), exc)
             result["errors"].append(
@@ -1456,7 +1471,11 @@ def _handle_bulk_analysis_submission():
         )
 
     bulk_products = parse_bulk_analysis_products(uploaded_content)
-    bulk_results = process_bulk_analysis_products(bulk_products)
+    bulk_results = process_bulk_analysis_products(
+        bulk_products,
+        history_file=get_history_file(),
+        user_id=_current_user_id(),
+    )
     return render_analysis_page(active_tab="bulk", bulk_results=bulk_results)
 
 
@@ -1652,13 +1671,17 @@ def portfolio_save():
 @app.route("/portfolio/<product_id>/delete", methods=["POST"])
 @login_required
 def portfolio_delete(product_id):
-    deleted = delete_portfolio_product(
-        get_portfolio_file(),
+    deleted = delete_history_entry(
+        get_history_file(),
         product_id,
         user_id=_current_user_id(),
     )
     message_key = "portfolio.messages.deleted" if deleted else "portfolio.messages.not_found"
-    fallback = "Product deleted from the portfolio." if deleted else "The selected product could not be found."
+    fallback = (
+        "Saved analysis removed from the workspace."
+        if deleted
+        else "The selected saved analysis could not be found."
+    )
     flash(translated_message(message_key, fallback), "success" if deleted else "danger")
     return redirect(localized_url("portfolio_page"))
 
@@ -1666,8 +1689,8 @@ def portfolio_delete(product_id):
 @app.route("/portfolio/export.csv")
 @login_required
 def portfolio_export_csv():
-    portfolio_products = _current_user_portfolio_products()
-    comparison_rows = build_portfolio_comparison(portfolio_products) if portfolio_products else []
+    history_entries = _current_user_history_entries()
+    comparison_rows = build_portfolio_comparison(history_entries) if history_entries else []
     csv_content = "\ufeff" + portfolio_analysis_to_csv(comparison_rows)
     return download_response(csv_content, "pricepilot_portfolio_analysis.csv", "text/csv; charset=utf-8")
 
@@ -1689,8 +1712,8 @@ def history_export_json():
 @app.route("/dashboard")
 @login_required
 def dashboard_page():
-    portfolio_products = _sort_portfolio_products(load_portfolio(get_portfolio_file()))
-    comparison_rows = build_portfolio_comparison(portfolio_products) if portfolio_products else []
+    history_entries = _current_user_history_entries()
+    comparison_rows = build_portfolio_comparison(history_entries) if history_entries else []
 
     focus_record = None
     if comparison_rows:
@@ -1699,12 +1722,18 @@ def dashboard_page():
             key=lambda row: (row["expected_profit"], row["confidence_score"], row["margin"]),
         )
         focus_record = next(
-            (record for record in portfolio_products if record.get("id") == focus_row["product_id"]),
+            (record for record in history_entries if record.get("id") == focus_row["product_id"]),
             None,
         )
 
-    focus_product = product_record_to_data(focus_record) if focus_record else build_reference_product()
-    focus_analysis = analyze_product(focus_product)
+    focus_product = _history_entry_product(focus_record) if focus_record else None
+    if focus_product is None:
+        focus_product = build_reference_product()
+
+    focus_analysis = _history_entry_analysis_result(focus_record) if focus_record else None
+    if focus_analysis is None:
+        focus_analysis = analyze_product(focus_product)
+
     focus_scenarios = compare_product_scenarios(focus_product)
     dashboard_snapshot = build_dashboard_snapshot(comparison_rows, focus_analysis, focus_scenarios)
 
@@ -1745,7 +1774,11 @@ def api_analyze():
         if _boolean_input(data.get("save_history"), default=True):
             append_history_entry(
                 get_history_file(),
-                build_history_entry(result),
+                build_history_entry(
+                    result,
+                    input_data=asdict(product),
+                    analysis_type="single",
+                ),
                 user_id=_current_user_id(),
             )
 

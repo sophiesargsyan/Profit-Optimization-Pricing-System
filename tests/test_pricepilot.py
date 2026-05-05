@@ -3,6 +3,7 @@ import tempfile
 import unittest
 from dataclasses import asdict
 from pathlib import Path
+from unittest import mock
 
 from auth_storage import load_users
 from app import (
@@ -220,7 +221,7 @@ class WorkspaceStorageTests(unittest.TestCase):
         self.assertTrue(deleted)
         self.assertEqual(load_portfolio(self.portfolio_file), [])
 
-    def test_history_saving_persists_compact_entry(self):
+    def test_history_saving_persists_rich_entry(self):
         save_history(self.history_file, [])
 
         analysis = run_full_analysis(TEST_PRODUCT)
@@ -234,15 +235,19 @@ class WorkspaceStorageTests(unittest.TestCase):
         self.assertIn("recommended_strategy", history_entries[0])
         self.assertEqual(history_entries[0]["confidence_level"], analysis["overall_confidence"]["level"])
         self.assertEqual(history_entries[0]["timestamp"], "2026-04-06T10:00:00")
+        self.assertEqual(history_entries[0]["created_at"], "2026-04-06T10:00:00")
+        self.assertEqual(history_entries[0]["analysis_type"], "single")
+        self.assertEqual(history_entries[0]["current_price"], TEST_PRODUCT.current_price)
+        self.assertIn("input_data", history_entries[0])
+        self.assertIn("result_data", history_entries[0])
+        self.assertEqual(history_entries[0]["input_data"]["name"], TEST_PRODUCT.name)
 
     def test_export_generation_and_summary_helpers(self):
-        save_portfolio(self.portfolio_file, [])
-        add_portfolio_product(self.portfolio_file, test_product_payload())
-        rows = build_portfolio_comparison(load_portfolio(self.portfolio_file))
         history_entry = build_history_entry(
             run_full_analysis(TEST_PRODUCT),
             timestamp="2026-04-06T10:00:00",
         )
+        rows = build_portfolio_comparison([history_entry])
 
         portfolio_csv = portfolio_analysis_to_csv(rows)
         history_csv = history_to_csv([history_entry])
@@ -252,6 +257,7 @@ class WorkspaceStorageTests(unittest.TestCase):
         self.assertIn("product_name,category,scenario,current_price", portfolio_csv)
         self.assertIn("confidence_level", history_csv)
         self.assertIn('"product_name": "Luna Crossbody Bag"', history_json)
+        self.assertIn('"analysis_type": "single"', history_json)
         self.assertIn("match_level", rows[0])
         self.assertEqual(summary["total_products"], 1)
         self.assertIn("projected_total_cost", summary)
@@ -469,6 +475,35 @@ class FlaskAppTests(unittest.TestCase):
         self.assertEqual(history_entries[0]["product_name"], self.payload["name"])
         self.assertIn("confidence_level", history_entries[0])
         self.assertEqual(history_entries[0]["user_id"], current_user["id"])
+        self.assertEqual(history_entries[0]["analysis_type"], "single")
+        self.assertEqual(history_entries[0]["input_data"]["name"], self.payload["name"])
+        self.assertIn("result_data", history_entries[0])
+
+    def test_portfolio_page_shows_saved_products_after_analysis(self):
+        with self.client as client:
+            self._sign_up(client)
+            client.post("/api/analyze", json=self.payload)
+            response = client.get("/portfolio?lang=en")
+            body = response.get_data(as_text=True)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Saved Analyses", body)
+        self.assertIn(self.payload["name"], body)
+        self.assertNotIn('<div class="empty-state empty-state-block">', body)
+
+    def test_saved_history_persists_after_logout_and_login(self):
+        product_name = "Persisted Workspace Product"
+
+        with self.client as client:
+            self._sign_up(client)
+            client.post("/api/analyze", json=test_product_payload(name=product_name))
+            client.post("/sign-out?lang=en")
+            self._sign_in(client)
+            response = client.get("/portfolio?lang=en")
+            body = response.get_data(as_text=True)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(product_name, body)
 
     def test_api_scenario_compare_still_returns_expected_data(self):
         with self.client as client:
@@ -496,14 +531,8 @@ class FlaskAppTests(unittest.TestCase):
         with self.client as client:
             self._sign_up(client)
             self._sign_up(client_b, name="Other User", email="other@example.com")
-            current_user = self._user_by_email("demo@example.com")
-            other_user = self._user_by_email("other@example.com")
-            add_portfolio_product(self.portfolio_file, self.payload, user_id=current_user["id"])
-            add_portfolio_product(
-                self.portfolio_file,
-                test_product_payload(name="Other User Product"),
-                user_id=other_user["id"],
-            )
+            client.post("/api/analyze", json=self.payload)
+            client_b.post("/api/analyze", json=test_product_payload(name="Other User Product"))
 
             response = client.get("/portfolio/export.csv")
             body = response.get_data(as_text=True)
@@ -520,18 +549,8 @@ class FlaskAppTests(unittest.TestCase):
 
         self._sign_up(client_a, name="User A", email="usera@example.com")
         self._sign_up(client_b, name="User B", email="userb@example.com")
-        user_a = self._user_by_email("usera@example.com")
-        user_b = self._user_by_email("userb@example.com")
-        add_portfolio_product(
-            self.portfolio_file,
-            test_product_payload(name="User A Product"),
-            user_id=user_a["id"],
-        )
-        add_portfolio_product(
-            self.portfolio_file,
-            test_product_payload(name="User B Product"),
-            user_id=user_b["id"],
-        )
+        client_a.post("/api/analyze", json=test_product_payload(name="User A Product"))
+        client_b.post("/api/analyze", json=test_product_payload(name="User B Product"))
 
         response = client_a.get("/portfolio?lang=en")
         body = response.get_data(as_text=True)
@@ -546,19 +565,14 @@ class FlaskAppTests(unittest.TestCase):
 
         self._sign_up(client_a, name="User A", email="usera@example.com")
         self._sign_up(client_b, name="User B", email="userb@example.com")
-        user_b = self._user_by_email("userb@example.com")
-        add_portfolio_product(
-            self.portfolio_file,
-            test_product_payload(name="User B Product"),
-            user_id=user_b["id"],
-        )
+        client_b.post("/api/analyze", json=test_product_payload(name="User B Product"))
 
         response = client_a.get("/portfolio?lang=en")
         body = response.get_data(as_text=True)
 
         self.assertEqual(response.status_code, 200)
         self.assertNotIn("User B Product", body)
-        self.assertIn("No saved products yet. Add a product to start portfolio-level pricing review.", body)
+        self.assertIn("No saved analyses yet. Run an analysis to start your workspace history.", body)
 
     def test_history_export_json_returns_only_current_users_entries(self):
         client_a = app.test_client()
@@ -582,6 +596,80 @@ class FlaskAppTests(unittest.TestCase):
         self.assertIn("application/json", response.content_type)
         self.assertIn("User A Analysis", body)
         self.assertNotIn("User B Analysis", body)
+
+    def test_dashboard_shows_only_current_users_saved_analyses(self):
+        client_a = app.test_client()
+        client_b = app.test_client()
+
+        self._sign_up(client_a, name="User A", email="usera@example.com")
+        self._sign_up(client_b, name="User B", email="userb@example.com")
+        client_a.post("/api/analyze", json=test_product_payload(name="User A Dashboard Product"))
+        client_b.post("/api/analyze", json=test_product_payload(name="User B Dashboard Product"))
+
+        response = client_a.get("/dashboard?lang=en")
+        body = response.get_data(as_text=True)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("User A Dashboard Product", body)
+        self.assertNotIn("User B Dashboard Product", body)
+
+    def test_bulk_analysis_saves_only_successful_rows(self):
+        workbook_content = _build_xlsx_workbook(
+            (
+                BULK_TEMPLATE_COLUMNS,
+                (
+                    "SKU-SUCCESS",
+                    "Bulk Success Product",
+                    "Accessories",
+                    72,
+                    26,
+                    250,
+                    1.2,
+                    79,
+                    "",
+                    "",
+                ),
+                (
+                    "SKU-FAIL",
+                    "Bulk Failure Product",
+                    "Accessories",
+                    75,
+                    28,
+                    210,
+                    1.1,
+                    82,
+                    "",
+                    "",
+                ),
+            )
+        )
+
+        def bulk_side_effect(product_input, options=None):
+            if isinstance(product_input, dict) and product_input.get("product_id") == "SKU-FAIL":
+                raise ValueError("Synthetic bulk failure")
+            return analyze_product(product_input, options)
+
+        with self.client as client:
+            self._sign_up(client)
+            with mock.patch("app.analyze_product", side_effect=bulk_side_effect):
+                response = client.post(
+                    "/bulk-analysis?lang=en",
+                    data={"product_file": (io.BytesIO(workbook_content), "products.xlsx")},
+                    content_type="multipart/form-data",
+                )
+                body = response.get_data(as_text=True)
+            history_entries = load_history(self.history_file)
+            current_user = self._user_by_email("demo@example.com")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("1 of 2 products were analyzed successfully. 1 products failed.", body)
+        self.assertIn("Bulk Success Product", body)
+        self.assertIn("SKU-FAIL could not be analyzed", body)
+        self.assertEqual(len(history_entries), 1)
+        self.assertEqual(history_entries[0]["user_id"], current_user["id"])
+        self.assertEqual(history_entries[0]["analysis_type"], "bulk")
+        self.assertEqual(history_entries[0]["product_name"], "Bulk Success Product")
+        self.assertNotIn("Bulk Failure Product", [entry["product_name"] for entry in history_entries])
 
     def test_bulk_template_download_validates_successfully(self):
         template_content = build_bulk_analysis_template()
@@ -834,8 +922,7 @@ class FlaskAppTests(unittest.TestCase):
     def test_portfolio_page_renders_financial_summary_and_contribution_analysis(self):
         with self.client as client:
             self._sign_up(client)
-            current_user = self._user_by_email("demo@example.com")
-            add_portfolio_product(self.portfolio_file, self.payload, user_id=current_user["id"])
+            client.post("/api/analyze", json=self.payload)
             response = client.get("/portfolio?lang=en")
             body = response.get_data(as_text=True)
 

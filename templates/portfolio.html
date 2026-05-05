@@ -167,7 +167,7 @@
                                     <td>{{ row.updated_at|replace('T', ' ') }}</td>
                                     <td>
                                         <div class="table-actions">
-                                            <a href="{{ localized_url('analyze_page', product_id=row.product_id) }}" class="btn btn-sm btn-dark">{{ t["portfolio.actions.analyze"] }}</a>
+                                            <a href="{{ localized_url('analyze_page') }}" class="btn btn-sm btn-dark">{{ t["portfolio.actions.analyze"] }}</a>
                                             <form method="post" action="{{ localized_url('portfolio_delete', product_id=row.product_id) }}" onsubmit="return confirm('{{ t["portfolio.messages.delete_confirm"] }}')">
                                                 <button type="submit" class="btn btn-sm btn-outline-danger">{{ t["portfolio.actions.delete"] }}</button>
                                             </form>
