@@ -30,6 +30,13 @@ from flask import (
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from auth_storage import add_user, get_user_by_email, get_user_by_id
+from budget_planner import (
+    BUSINESS_ACTIVITY_OPTIONS,
+    BUSINESS_GOAL_OPTIONS,
+    BUSINESS_STATUS_OPTIONS,
+    ORGANIZATION_TYPE_OPTIONS,
+    generate_smart_budget_plan,
+)
 from catalog_profiles import CATEGORY_PROFILES
 from data_repository import load_business_dataset
 from export_service import history_to_csv, history_to_json, portfolio_analysis_to_csv
@@ -246,6 +253,21 @@ FINANCE_SCENARIO_DEFINITIONS = (
         },
     },
 )
+
+SMART_BUDGET_REQUIRED_FIELDS = (
+    "available_capital",
+    "organization_type",
+    "business_activity",
+    "business_status",
+    "business_goal",
+)
+SMART_BUDGET_OPTIONAL_FIELDS = (
+    "average_monthly_revenue",
+    "fixed_costs",
+    "variable_costs",
+    "employees_count",
+)
+SMART_BUDGET_INPUT_FIELDS = SMART_BUDGET_REQUIRED_FIELDS + SMART_BUDGET_OPTIONAL_FIELDS
 
 
 @dataclass
@@ -1029,25 +1051,120 @@ def render_bulk_analysis_page(validation_errors=None, bulk_results=None, status=
     )
 
 
-def _finance_form_values(source=None):
+def _smart_budget_form_values(source=None):
     source = source or {}
-    values = {}
-    for field_name in FINANCE_BUDGET_FIELDS:
+    values = {field_name: "" for field_name in SMART_BUDGET_INPUT_FIELDS}
+    for field_name in SMART_BUDGET_INPUT_FIELDS:
         raw_value = source.get(field_name)
-        if raw_value is None:
-            values[field_name] = ""
-        elif isinstance(raw_value, (int, float)):
+        if raw_value in (None, ""):
+            continue
+        if isinstance(raw_value, (int, float)):
             values[field_name] = _format_form_number(raw_value)
         else:
             values[field_name] = str(raw_value).strip()
     return values
 
 
-def _finance_field_label(field_name):
-    return translated_message(
-        f"finance.field.{field_name}",
-        field_name.replace("_", " ").title(),
-    )
+def _smart_budget_input_values(source):
+    if not isinstance(source, dict):
+        return {}
+
+    normalized = {}
+    for field_name in SMART_BUDGET_INPUT_FIELDS:
+        if field_name not in source:
+            continue
+        value = source.get(field_name)
+        if value in (None, ""):
+            continue
+        normalized[field_name] = value
+    return normalized
+
+
+def _legacy_finance_prefill(record):
+    if not isinstance(record, dict):
+        return {}
+    total_budget = record.get("total_budget")
+    if total_budget in (None, "", 0, 0.0):
+        return {}
+    return {"available_capital": total_budget}
+
+
+def _saved_finance_input_values(record):
+    if not isinstance(record, dict):
+        return {}
+
+    for candidate in (record.get("input_values"), record.get("values"), record):
+        normalized = _smart_budget_input_values(candidate if isinstance(candidate, dict) else {})
+        if normalized:
+            return normalized
+
+    return _legacy_finance_prefill(record)
+
+
+def _has_complete_smart_budget_inputs(values):
+    return all(str(values.get(field_name, "") or "").strip() for field_name in SMART_BUDGET_REQUIRED_FIELDS)
+
+
+def _finance_record_allocation_amount(finance_record, field_name):
+    rows = finance_record.get("allocation_rows")
+    if not isinstance(rows, list):
+        return None
+
+    for row in rows:
+        if not isinstance(row, dict) or row.get("field_name") != field_name:
+            continue
+        try:
+            return float(row.get("amount", 0.0) or 0.0)
+        except (TypeError, ValueError):
+            return 0.0
+    return None
+
+
+def _finance_record_amount(finance_record, field_name):
+    try:
+        if finance_record.get(field_name) not in (None, ""):
+            return float(finance_record.get(field_name) or 0.0)
+    except (TypeError, ValueError):
+        pass
+
+    input_values = finance_record.get("input_values")
+    summary = finance_record.get("summary")
+    values = finance_record.get("values")
+    allocation_mapping = {
+        "marketing_budget": "marketing_budget",
+        "product_cost_budget": "inventory_or_purchase_budget",
+        "reserve_budget": "emergency_reserve",
+    }
+
+    if field_name == "total_budget":
+        for source, source_key in (
+            (input_values, "available_capital"),
+            (summary, "available_capital"),
+            (values, "available_capital"),
+            (summary, "total_allocated"),
+        ):
+            if not isinstance(source, dict):
+                continue
+            try:
+                if source.get(source_key) not in (None, ""):
+                    return float(source.get(source_key) or 0.0)
+            except (TypeError, ValueError):
+                continue
+        return 0.0
+
+    allocation_field = allocation_mapping.get(field_name)
+    if allocation_field:
+        allocation_amount = _finance_record_allocation_amount(finance_record, allocation_field)
+        if allocation_amount is not None:
+            return allocation_amount
+        if isinstance(values, dict):
+            try:
+                if values.get(allocation_field) not in (None, ""):
+                    return float(values.get(allocation_field) or 0.0)
+            except (TypeError, ValueError):
+                pass
+
+    return 0.0
 
 
 def _safe_budget_ratio(amount, total_budget):
@@ -1062,7 +1179,7 @@ def _build_analysis_finance_insights(result):
     if finance_record is None:
         return None
 
-    total_budget = float(finance_record.get("total_budget", 0.0) or 0.0)
+    total_budget = _finance_record_amount(finance_record, "total_budget")
     if total_budget <= 0:
         return None
 
@@ -1070,9 +1187,9 @@ def _build_analysis_finance_insights(result):
     current_option = result.get("current_option") or {}
     product_data = result.get("product") or {}
 
-    marketing_budget = float(finance_record.get("marketing_budget", 0.0) or 0.0)
-    product_cost_budget = float(finance_record.get("product_cost_budget", 0.0) or 0.0)
-    reserve_budget = float(finance_record.get("reserve_budget", 0.0) or 0.0)
+    marketing_budget = _finance_record_amount(finance_record, "marketing_budget")
+    product_cost_budget = _finance_record_amount(finance_record, "product_cost_budget")
+    reserve_budget = _finance_record_amount(finance_record, "reserve_budget")
 
     best_demand = float(best_strategy.get("demand", 0.0) or 0.0)
     current_demand = float(
@@ -1139,295 +1256,107 @@ def _build_analysis_finance_insights(result):
     return {"items": insights}
 
 
-def _parse_finance_amount(value, field_name):
-    raw_value = str(value or "").strip()
-    if not raw_value:
-        return 0.0
+def _risk_class_from_label(label):
+    if label == "Բարձր":
+        return "risk-high"
+    if label == "Միջին":
+        return "risk-medium"
+    return "risk-low"
 
-    normalized_value = raw_value.replace(" ", "")
-    if "," in normalized_value and "." not in normalized_value:
-        normalized_value = normalized_value.replace(",", ".")
-    else:
-        normalized_value = normalized_value.replace(",", "")
+
+def _sustainability_class(status_label):
+    if status_label == "Անբավարար":
+        return "risk-high"
+    if status_label == "Սահմանային":
+        return "risk-medium"
+    return "risk-low"
+
+
+def _prepare_smart_budget_result(result_payload):
+    if not isinstance(result_payload, dict):
+        return None
+
+    summary = dict(result_payload.get("summary") or {})
+    allocation_rows = [dict(row) for row in (result_payload.get("allocation_rows") or [])]
+    scenario_rows = [dict(row) for row in (result_payload.get("scenario_rows") or [])]
+    warnings = [dict(item) for item in (result_payload.get("warnings") or []) if isinstance(item, dict)]
+    recommendations = [item for item in (result_payload.get("recommendations") or []) if item]
+    method_notes = [item for item in (result_payload.get("method_notes") or []) if item]
+
+    if not summary:
+        return None
+
+    summary["overall_risk_class"] = _risk_class_from_label(summary.get("overall_risk_level"))
+    summary["sustainability_class"] = _sustainability_class(summary.get("sustainability_status"))
+
+    for row in scenario_rows:
+        row["risk_class"] = _risk_class_from_label(row.get("risk_level"))
+        row["sustainability_class"] = _sustainability_class(row.get("sustainability_status"))
+
+    return {
+        "summary": summary,
+        "allocation_rows": allocation_rows,
+        "scenario_rows": scenario_rows,
+        "warnings": warnings,
+        "recommendations": recommendations,
+        "method_notes": method_notes,
+    }
+
+
+def _saved_finance_result(record):
+    prepared = _prepare_smart_budget_result(record)
+    if prepared is not None:
+        return prepared
+
+    input_values = _saved_finance_input_values(record)
+    if not _has_complete_smart_budget_inputs(input_values):
+        return None
 
     try:
-        amount = round(float(normalized_value), 2)
-    except ValueError as exc:
-        raise ValueError(
-            translated_message(
-                "finance.validation.invalid_number",
-                "{field} must be a valid number.",
-            ).format(field=_finance_field_label(field_name))
-        ) from exc
-
-    if amount < 0:
-        raise ValueError(
-            translated_message(
-                "finance.validation.non_negative",
-                "{field} must be 0 or greater.",
-            ).format(field=_finance_field_label(field_name))
-        )
-
-    return amount
+        return _prepare_smart_budget_result(generate_smart_budget_plan(input_values))
+    except ValueError:
+        return None
 
 
-def getBudgetState(total_budget, remaining_budget):
-    if remaining_budget < 0:
-        state = "overspending"
-        recommended_scenario_key = "conservative"
-        status_key = "finance.status.overspending"
-        message_key = "finance.budget_state.message.overspending"
-        status_fallback = "Overspending"
-        message_fallback = "Budget has been exceeded. It is recommended to reduce expenses."
-        alert_tone = "danger"
-        status_class = "risk-high"
-    elif total_budget > 0 and (remaining_budget / total_budget) > 0.2:
-        state = "safe"
-        recommended_scenario_key = "growth"
-        status_key = "finance.status.safe"
-        message_key = "finance.budget_state.message.safe"
-        status_fallback = "Safe"
-        message_fallback = "There is free budget remaining. You can consider growth."
-        alert_tone = "warning"
-        status_class = "risk-medium"
-    else:
-        state = "balanced"
-        recommended_scenario_key = "balanced"
-        status_key = "finance.status.balanced"
-        message_key = "finance.budget_state.message.balanced"
-        status_fallback = "Balanced"
-        message_fallback = "Budget is balanced. Current allocations match the total budget."
-        alert_tone = "success"
-        status_class = "risk-low"
-
-    recommended_scenario = next(
-        scenario
-        for scenario in FINANCE_SCENARIO_DEFINITIONS
-        if scenario["key"] == recommended_scenario_key
-    )
-
+def _smart_budget_storage_payload(plan_result):
+    values = dict(plan_result.get("values") or {})
     return {
-        "state": state,
-        "recommendedScenario": translated_message(
-            recommended_scenario["label_key"],
-            recommended_scenario["key"].replace("_", " ").title(),
-        ),
-        "recommended_scenario_key": recommended_scenario_key,
-        "message": translated_message(message_key, message_fallback),
-        "message_key": message_key,
-        "statusLabel": translated_message(status_key, status_fallback),
-        "status_key": status_key,
-        "status_class": status_class,
-        "alert_tone": alert_tone,
-        "scenarioGoal": translated_message(
-            recommended_scenario["goal_key"],
-            recommended_scenario["key"].replace("_", " ").title(),
-        ),
-        "scenario_goal_key": recommended_scenario["goal_key"],
-        "scenarioRiskLabel": translated_message(
-            recommended_scenario["risk_key"],
-            recommended_scenario["risk_key"].split(".")[-1],
-        ),
-        "scenario_risk_key": recommended_scenario["risk_key"],
-        "scenario_risk_class": recommended_scenario["risk_class"],
-    }
-
-
-def _build_finance_budget_results(form_values):
-    values = {
-        field_name: _parse_finance_amount(form_values.get(field_name, ""), field_name)
-        for field_name in FINANCE_BUDGET_FIELDS
-    }
-
-    total_budget = values["total_budget"]
-    allocated_amount = round(sum(values[field_name] for field_name in FINANCE_ALLOCATION_FIELDS), 2)
-    remaining_budget = round(total_budget - allocated_amount, 2)
-
-    if abs(remaining_budget) < FINANCE_STATUS_TOLERANCE:
-        remaining_budget = 0.0
-
-    budget_state = getBudgetState(total_budget, remaining_budget)
-
-    rows = []
-    for field_name in FINANCE_ALLOCATION_FIELDS:
-        amount = values[field_name]
-        percentage = round((amount / total_budget) * 100, 1) if total_budget > 0 else 0.0
-        rows.append(
-            {
-                "field_name": field_name,
-                "amount": amount,
-                "percentage": percentage,
-            }
-        )
-
-    reserve_percent = next(
-        row["percentage"] for row in rows if row["field_name"] == "reserve_budget"
-    )
-    marketing_percent = next(
-        row["percentage"] for row in rows if row["field_name"] == "marketing_budget"
-    )
-
-    recommendations = [{"tone": budget_state["alert_tone"], "message": budget_state["message"]}]
-    if total_budget > 0 and reserve_percent < FINANCE_RESERVE_MIN_PERCENT:
-        recommendations.append({"tone": "warning", "key": "finance.recommendation.reserve_low"})
-    if total_budget > 0 and marketing_percent > FINANCE_MARKETING_MAX_PERCENT:
-        recommendations.append({"tone": "warning", "key": "finance.recommendation.marketing_high"})
-
-    budget_risks = []
-    has_budget_risks = False
-    if total_budget > 0 and values["marketing_budget"] > total_budget * 0.35:
-        budget_risks.append({"tone": "warning", "key": "finance.risk.marketing_high"})
-        has_budget_risks = True
-    if total_budget > 0 and values["product_cost_budget"] > total_budget * 0.5:
-        budget_risks.append({"tone": "warning", "key": "finance.risk.product_cost_high"})
-        has_budget_risks = True
-    if total_budget > 0 and values["operational_budget"] < total_budget * 0.1:
-        budget_risks.append({"tone": "warning", "key": "finance.risk.operational_low"})
-        has_budget_risks = True
-    if remaining_budget < 0:
-        budget_risks.append({"tone": "danger", "key": "finance.risk.overallocated"})
-        has_budget_risks = True
-    if not budget_risks:
-        budget_risks.append({"tone": "success", "key": "finance.risk.stable"})
-
-    recommended_budget_rows = []
-    for field_name, recommended_percentage in FINANCE_RECOMMENDED_ALLOCATION:
-        recommended_amount = round(total_budget * (recommended_percentage / 100), 2)
-        entered_amount = values[field_name]
-        difference = round(entered_amount - recommended_amount, 2)
-
-        if abs(difference) < FINANCE_STATUS_TOLERANCE:
-            difference_status = "match"
-            difference_amount = 0.0
-        elif difference > 0:
-            difference_status = "over"
-            difference_amount = difference
-        else:
-            difference_status = "under"
-            difference_amount = abs(difference)
-
-        recommended_budget_rows.append(
-            {
-                "field_name": field_name,
-                "label_key": (
-                    "finance.recommended.field.reserve_budget"
-                    if field_name == "reserve_budget"
-                    else f"finance.field.{field_name}"
-                ),
-                "recommended_amount": recommended_amount,
-                "recommended_percentage": recommended_percentage,
-                "difference_status": difference_status,
-                "difference_amount": difference_amount,
-            }
-        )
-
-    scenario_rows = []
-    for scenario in FINANCE_SCENARIO_DEFINITIONS:
-        allocations = scenario["allocations"]
-        total_allocated_amount = round(
-            sum(total_budget * (percentage / 100) for percentage in allocations.values()),
-            2,
-        )
-        remaining_amount = round(total_budget - total_allocated_amount, 2)
-        if abs(remaining_amount) < FINANCE_STATUS_TOLERANCE:
-            remaining_amount = 0.0
-
-        scenario_rows.append(
-            {
-                "key": scenario["key"],
-                "label_key": scenario["label_key"],
-                "goal_key": scenario["goal_key"],
-                "risk_key": scenario["risk_key"],
-                "risk_class": scenario["risk_class"],
-                "total_allocated_amount": total_allocated_amount,
-                "remaining_amount": remaining_amount,
-                "marketing_amount": round(total_budget * (allocations["marketing_budget"] / 100), 2),
-                "operational_amount": round(total_budget * (allocations["operational_budget"] / 100), 2),
-                "is_recommended": scenario["key"] == budget_state["recommended_scenario_key"],
-            }
-        )
-
-    scenario_chart_metrics = []
-    for metric_key, label_key in (
-        ("marketing_amount", "finance.field.marketing_budget"),
-        ("operational_amount", "finance.field.operational_budget"),
-        ("remaining_amount", "finance.card.remaining_budget"),
-    ):
-        max_value = max((row[metric_key] for row in scenario_rows), default=0.0)
-        items = []
-        for row in scenario_rows:
-            value = row[metric_key]
-            width_percent = round((value / max_value) * 100, 1) if max_value > 0 else 0.0
-            items.append(
-                {
-                    "scenario_key": row["key"],
-                    "label_key": row["label_key"],
-                    "value": value,
-                    "width_percent": width_percent,
-                    "bar_class": f"finance-scenario-bar-{row['key']}",
-                    "is_recommended": row["is_recommended"],
-                }
-            )
-        scenario_chart_metrics.append(
-            {
-                "metric_key": metric_key,
-                "label_key": label_key,
-                "bars": items,
-            }
-        )
-
-    return {
+        "input_values": {
+            field_name: values.get(field_name)
+            for field_name in SMART_BUDGET_INPUT_FIELDS
+        },
         "values": values,
-        "budget_summary": {
-            "total_budget": total_budget,
-            "allocated_amount": allocated_amount,
-            "remaining_budget": remaining_budget,
-        },
-        "budget_state": budget_state,
-        "budget_rows": rows,
-        "recommendations": recommendations,
-        "budget_risks": budget_risks,
-        "recommended_budget": {
-            "rows": recommended_budget_rows,
-            "summary_tone": "info" if has_budget_risks else "success",
-            "summary_key": (
-                "finance.recommended.summary.risks"
-                if has_budget_risks
-                else "finance.recommended.summary.stable"
-            ),
-        },
-        "scenario_comparison": {
-            "rows": scenario_rows,
-            "chart_metrics": scenario_chart_metrics,
-        },
+        "summary": dict(plan_result.get("summary") or {}),
+        "allocation_rows": list(plan_result.get("allocation_rows") or []),
+        "scenario_rows": list(plan_result.get("scenario_rows") or []),
+        "warnings": list(plan_result.get("warnings") or []),
+        "recommendations": list(plan_result.get("recommendations") or []),
+        "method_notes": list(plan_result.get("method_notes") or []),
     }
 
 
 def render_finance_page(
     form_values=None,
-    budget_summary=None,
-    budget_state=None,
-    budget_rows=None,
-    recommendations=None,
-    budget_risks=None,
-    recommended_budget=None,
-    scenario_comparison=None,
+    planner_result=None,
     error_message=None,
     status=200,
 ):
+    prepared_result = _prepare_smart_budget_result(planner_result)
     return (
         render_template(
             "finance.html",
             page_name="finance",
-            form_values=_finance_form_values(form_values),
-            budget_summary=budget_summary,
-            budget_state=budget_state or {},
-            budget_rows=budget_rows or [],
-            recommendations=recommendations or [],
-            budget_risks=budget_risks or [],
-            recommended_budget=recommended_budget
-            or {"rows": [], "summary_tone": "success", "summary_key": ""},
-            scenario_comparison=scenario_comparison or {"rows": [], "chart_metrics": []},
+            form_values=_smart_budget_form_values(form_values),
+            finance_summary=(prepared_result or {}).get("summary"),
+            allocation_rows=(prepared_result or {}).get("allocation_rows", []),
+            scenario_rows=(prepared_result or {}).get("scenario_rows", []),
+            warnings=(prepared_result or {}).get("warnings", []),
+            recommendations=(prepared_result or {}).get("recommendations", []),
+            method_notes=(prepared_result or {}).get("method_notes", []),
+            organization_type_options=ORGANIZATION_TYPE_OPTIONS,
+            business_activity_options=BUSINESS_ACTIVITY_OPTIONS,
+            business_status_options=BUSINESS_STATUS_OPTIONS,
+            business_goal_options=BUSINESS_GOAL_OPTIONS,
             error_message=error_message,
         ),
         status,
@@ -1993,7 +1922,7 @@ def finance_page():
     if request.method == "POST":
         form_values = request.form.to_dict(flat=True)
         try:
-            finance_results = _build_finance_budget_results(form_values)
+            planner_result = generate_smart_budget_plan(form_values)
         except ValueError as exc:
             return render_finance_page(
                 form_values=form_values,
@@ -2003,34 +1932,21 @@ def finance_page():
 
         saved_record = upsert_finance_record(
             get_finance_file(),
-            finance_results["values"],
+            _smart_budget_storage_payload(planner_result),
             user_id=_current_user_id(),
         )
         return render_finance_page(
-            form_values=saved_record,
-            budget_summary=finance_results["budget_summary"],
-            budget_state=finance_results["budget_state"],
-            budget_rows=finance_results["budget_rows"],
-            recommendations=finance_results["recommendations"],
-            budget_risks=finance_results["budget_risks"],
-            recommended_budget=finance_results["recommended_budget"],
-            scenario_comparison=finance_results["scenario_comparison"],
+            form_values=_saved_finance_input_values(saved_record),
+            planner_result=saved_record,
         )
 
     saved_record = get_finance_record(get_finance_file(), user_id=_current_user_id())
     if saved_record is None:
         return render_finance_page()
 
-    finance_results = _build_finance_budget_results(saved_record)
     return render_finance_page(
-        form_values=saved_record,
-        budget_summary=finance_results["budget_summary"],
-        budget_state=finance_results["budget_state"],
-        budget_rows=finance_results["budget_rows"],
-        recommendations=finance_results["recommendations"],
-        budget_risks=finance_results["budget_risks"],
-        recommended_budget=finance_results["recommended_budget"],
-        scenario_comparison=finance_results["scenario_comparison"],
+        form_values=_saved_finance_input_values(saved_record),
+        planner_result=_saved_finance_result(saved_record) or saved_record,
     )
 
 

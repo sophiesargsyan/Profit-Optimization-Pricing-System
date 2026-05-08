@@ -1,15 +1,57 @@
 {% extends "base.html" %}
 
-{% block title %}{{ t["brand.name"] }} | {{ t.get("title.finance", "Finance & Budget Management") }}{% endblock %}
+{% block title %}{{ t["brand.name"] }} | {{ t.get("finance.smartBudget.title", "Խելացի բյուջեի պլանավորում") }}{% endblock %}
 
 {% block content %}
+{% set organization_label_keys = {
+    "ԱՁ": "finance.smartBudget.org.ie",
+    "ՍՊԸ": "finance.smartBudget.org.llc",
+    "ՓԲԸ": "finance.smartBudget.org.cjsc",
+    "ԲԲԸ": "finance.smartBudget.org.ojsc",
+    "Այլ": "finance.smartBudget.org.other"
+} %}
+{% set activity_label_keys = {
+    "Օնլայն խանութ": "finance.smartBudget.activity.onlineShop",
+    "Ձեռագործ արտադրանք": "finance.smartBudget.activity.handmade",
+    "Ծառայություններ": "finance.smartBudget.activity.services",
+    "Մանրածախ առևտուր": "finance.smartBudget.activity.retail",
+    "Այլ": "finance.smartBudget.activity.other"
+} %}
+{% set status_label_keys = {
+    "Նոր բիզնես": "finance.smartBudget.status.new",
+    "Գործող բիզնես": "finance.smartBudget.status.active"
+} %}
+{% set goal_label_keys = {
+    "Աճ": "finance.smartBudget.goal.growth",
+    "Կայունություն": "finance.smartBudget.goal.stability",
+    "Գոյատևում": "finance.smartBudget.goal.survival",
+    "Հավասարակշռված զարգացում": "finance.smartBudget.goal.balanced"
+} %}
+{% set allocation_label_keys = {
+    "tax_reserve": "finance.smartBudget.allocations.taxReserve",
+    "payroll_admin_reserve": "finance.smartBudget.allocations.payrollAdminReserve",
+    "fixed_costs_coverage": "finance.smartBudget.allocations.fixedCostsCoverage",
+    "variable_costs_coverage": "finance.smartBudget.allocations.variableCostsCoverage",
+    "marketing_budget": "finance.smartBudget.allocations.marketingBudget",
+    "inventory_or_purchase_budget": "finance.smartBudget.allocations.inventoryOrPurchaseBudget",
+    "operational_budget": "finance.smartBudget.allocations.operationalBudget",
+    "emergency_reserve": "finance.smartBudget.allocations.emergencyReserve",
+    "reinvestment_budget": "finance.smartBudget.allocations.reinvestmentBudget",
+    "free_cash": "finance.smartBudget.allocations.freeCash"
+} %}
+{% set scenario_label_keys = {
+    "minimum_growth": "finance.smartBudget.scenarios.minimumGrowth",
+    "stable_growth": "finance.smartBudget.scenarios.stableDevelopment",
+    "rapid_growth": "finance.smartBudget.scenarios.fastGrowth"
+} %}
 <div class="analysis-page">
 <section class="section-space">
     <div class="container">
         <div class="page-heading page-heading-left mb-4">
-            <span class="eyebrow-pill">{{ t.get("finance.eyebrow", "Budget planning") }}</span>
-            <h1>{{ t.get("finance.title", "Finance & Budget Management") }}</h1>
-            <p>{{ t.get("finance.subtitle", "Plan a simple operating budget, review allocations, and spot budget pressure before execution.") }}</p>
+            <span class="eyebrow-pill">{{ t.get("finance.smartBudget.eyebrow", "Խելացի պլանավորում") }}</span>
+            <h1>{{ t.get("finance.smartBudget.title", "Խելացի բյուջեի պլանավորում") }}</h1>
+            <p>{{ t.get("finance.smartBudget.subtitle", "Համակարգը ձևավորում և բաշխում է բիզնեսի բյուջեն՝ հաշվի առնելով հասանելի կապիտալը, կազմակերպության տեսակը, ծախսերը և զարգացման նպատակը։") }}</p>
+            <p class="form-helper mt-3 mb-0">{{ t.get("finance.smartBudget.note", "Հաշվարկները հիմնված են բիզնես պլանավորման և ֆինանսական բաշխման մոտեցումների վրա և նախատեսված են աջակցելու ֆինանսական որոշումների կայացման գործընթացին։") }}</p>
         </div>
 
         <div class="analysis-workspace">
@@ -20,79 +62,121 @@
             <div class="app-card analysis-primary-card mb-4">
                 <div class="section-header mb-4">
                     <div>
-                        <h2 class="section-title mb-1">{{ t.get("finance.form.title", "Budget inputs") }}</h2>
-                        <p class="text-muted mb-0">{{ t.get("finance.form.subtitle", "Enter the total budget and the planned allocation for each category.") }}</p>
+                        <h2 class="section-title mb-1">{{ t.get("finance.smartBudget.inputTitle", "Մուտքային տվյալներ") }}</h2>
+                        <p class="text-muted mb-0">{{ t.get("finance.smartBudget.inputSubtitle", "Լրացրու հիմնական տվյալները, իսկ մնացած բաշխումը համակարգը կհաշվի ավտոմատ։") }}</p>
                     </div>
-                    <span class="soft-badge">{{ t.get("nav.finance", "Finance") }}</span>
+                    <span class="soft-badge">{{ t.get("finance.smartBudget.autoAllocation", "Ավտոմատ բաշխում") }}</span>
                 </div>
 
-                <form method="post" action="{{ localized_url('finance_page') }}" class="row g-3">
+                <form method="post" action="{{ localized_url('finance_page') }}" class="row g-3 finance-planner-form">
                     <div class="col-12 col-xl-6">
-                        <label class="form-label" for="total_budget">{{ t.get("finance.field.total_budget", "Total budget") }}</label>
-                        <input class="form-control" type="number" id="total_budget" name="total_budget" min="0" step="0.01" value="{{ form_values.total_budget }}">
+                        <label class="form-label finance-required-label" for="available_capital">{{ t.get("finance.smartBudget.availableCapital", "Հասանելի կապիտալ") }} <span class="finance-required-mark" aria-hidden="true">*</span></label>
+                        <input class="form-control" type="number" id="available_capital" name="available_capital" min="0" step="0.01" value="{{ form_values.available_capital }}" required>
                     </div>
                     <div class="col-12 col-xl-6">
-                        <label class="form-label" for="product_cost_budget">{{ t.get("finance.field.product_cost_budget", "Product cost budget") }}</label>
-                        <input class="form-control" type="number" id="product_cost_budget" name="product_cost_budget" min="0" step="0.01" value="{{ form_values.product_cost_budget }}">
+                        <label class="form-label finance-required-label" for="organization_type">{{ t.get("finance.smartBudget.organizationType", "Կազմակերպության տեսակ") }} <span class="finance-required-mark" aria-hidden="true">*</span></label>
+                        <select class="form-select" id="organization_type" name="organization_type" required>
+                            <option value="">{{ t.get("finance.smartBudget.selectOption", "Ընտրիր տարբերակը") }}</option>
+                            {% for option in organization_type_options %}
+                            <option value="{{ option }}" {% if form_values.organization_type == option %}selected{% endif %}>{{ t.get(organization_label_keys.get(option), option) }}</option>
+                            {% endfor %}
+                        </select>
                     </div>
-                    <div class="col-12 col-md-6 col-xl-4">
-                        <label class="form-label" for="marketing_budget">{{ t.get("finance.field.marketing_budget", "Marketing budget") }}</label>
-                        <input class="form-control" type="number" id="marketing_budget" name="marketing_budget" min="0" step="0.01" value="{{ form_values.marketing_budget }}">
+                    <div class="col-12 col-md-6">
+                        <label class="form-label finance-required-label" for="business_activity">{{ t.get("finance.smartBudget.businessActivity", "Գործունեության ոլորտ") }} <span class="finance-required-mark" aria-hidden="true">*</span></label>
+                        <select class="form-select" id="business_activity" name="business_activity" required>
+                            <option value="">{{ t.get("finance.smartBudget.selectOption", "Ընտրիր տարբերակը") }}</option>
+                            {% for option in business_activity_options %}
+                            <option value="{{ option }}" {% if form_values.business_activity == option %}selected{% endif %}>{{ t.get(activity_label_keys.get(option), option) }}</option>
+                            {% endfor %}
+                        </select>
                     </div>
-                    <div class="col-12 col-md-6 col-xl-4">
-                        <label class="form-label" for="delivery_budget">{{ t.get("finance.field.delivery_budget", "Delivery budget") }}</label>
-                        <input class="form-control" type="number" id="delivery_budget" name="delivery_budget" min="0" step="0.01" value="{{ form_values.delivery_budget }}">
+                    <div class="col-12 col-md-6">
+                        <label class="form-label finance-required-label" for="business_status">{{ t.get("finance.smartBudget.businessStatus", "Բիզնեսի ընթացիկ վիճակ") }} <span class="finance-required-mark" aria-hidden="true">*</span></label>
+                        <select class="form-select" id="business_status" name="business_status" required>
+                            <option value="">{{ t.get("finance.smartBudget.selectOption", "Ընտրիր տարբերակը") }}</option>
+                            {% for option in business_status_options %}
+                            <option value="{{ option }}" {% if form_values.business_status == option %}selected{% endif %}>{{ t.get(status_label_keys.get(option), option) }}</option>
+                            {% endfor %}
+                        </select>
                     </div>
-                    <div class="col-12 col-md-6 col-xl-4">
-                        <label class="form-label" for="packaging_budget">{{ t.get("finance.field.packaging_budget", "Packaging budget") }}</label>
-                        <input class="form-control" type="number" id="packaging_budget" name="packaging_budget" min="0" step="0.01" value="{{ form_values.packaging_budget }}">
+                    <div class="col-12">
+                        <label class="form-label finance-required-label" for="business_goal">{{ t.get("finance.smartBudget.businessGoal", "Բիզնեսի առաջնահերթ նպատակ") }} <span class="finance-required-mark" aria-hidden="true">*</span></label>
+                        <select class="form-select" id="business_goal" name="business_goal" required>
+                            <option value="">{{ t.get("finance.smartBudget.selectOption", "Ընտրիր տարբերակը") }}</option>
+                            {% for option in business_goal_options %}
+                            <option value="{{ option }}" {% if form_values.business_goal == option %}selected{% endif %}>{{ t.get(goal_label_keys.get(option), option) }}</option>
+                            {% endfor %}
+                        </select>
                     </div>
-                    <div class="col-12 col-md-6 col-xl-6">
-                        <label class="form-label" for="operational_budget">{{ t.get("finance.field.operational_budget", "Operational budget") }}</label>
-                        <input class="form-control" type="number" id="operational_budget" name="operational_budget" min="0" step="0.01" value="{{ form_values.operational_budget }}">
+
+                    <div class="col-12">
+                        <div class="analysis-secondary-panel">
+                            <details class="advanced-panel analysis-advanced-fields finance-advanced-panel" {% if form_values.average_monthly_revenue or form_values.fixed_costs or form_values.variable_costs or form_values.employees_count %}open{% endif %}>
+                                <summary>{{ t.get("finance.smartBudget.advancedData", "Լրացուցիչ ֆինանսական տվյալներ") }}</summary>
+                                <div class="row g-3 mt-1">
+                                    <div class="col-12 col-md-6">
+                                        <label class="form-label" for="average_monthly_revenue">{{ t.get("finance.smartBudget.averageMonthlyRevenue", "Վերջին ամիսների միջին եկամուտ") }}</label>
+                                        <input class="form-control" type="number" id="average_monthly_revenue" name="average_monthly_revenue" min="0" step="0.01" value="{{ form_values.average_monthly_revenue }}">
+                                    </div>
+                                    <div class="col-12 col-md-6">
+                                        <label class="form-label" for="fixed_costs">{{ t.get("finance.smartBudget.fixedCosts", "Ամսական ֆիքսված ծախսեր") }}</label>
+                                        <input class="form-control" type="number" id="fixed_costs" name="fixed_costs" min="0" step="0.01" value="{{ form_values.fixed_costs }}">
+                                    </div>
+                                    <div class="col-12 col-md-6">
+                                        <label class="form-label" for="variable_costs">{{ t.get("finance.smartBudget.variableCosts", "Փոփոխական ծախսեր") }}</label>
+                                        <input class="form-control" type="number" id="variable_costs" name="variable_costs" min="0" step="0.01" value="{{ form_values.variable_costs }}">
+                                    </div>
+                                    <div class="col-12 col-md-6">
+                                        <label class="form-label" for="employees_count">{{ t.get("finance.smartBudget.employeesCount", "Աշխատակիցների քանակ") }}</label>
+                                        <input class="form-control" type="number" id="employees_count" name="employees_count" min="0" step="1" value="{{ form_values.employees_count }}">
+                                    </div>
+                                </div>
+                            </details>
+                        </div>
                     </div>
-                    <div class="col-12 col-md-6 col-xl-6">
-                        <label class="form-label" for="reserve_budget">{{ t.get("finance.field.reserve_budget", "Reserve budget") }}</label>
-                        <input class="form-control" type="number" id="reserve_budget" name="reserve_budget" min="0" step="0.01" value="{{ form_values.reserve_budget }}">
-                    </div>
+
                     <div class="col-12 d-grid d-sm-flex justify-content-sm-end">
-                        <button type="submit" class="btn btn-dark btn-lg px-sm-4">{{ t.get("finance.form.submit", "Calculate budget") }}</button>
+                        <button type="submit" class="btn btn-dark btn-lg px-sm-4">{{ t.get("finance.smartBudget.generate", "Կազմել բյուջե") }}</button>
                     </div>
                 </form>
             </div>
 
-            {% if budget_summary %}
+            {% if finance_summary %}
             <div class="section-header mb-4">
                 <div>
-                    <h2 class="section-title mb-1">{{ t.get("finance.results.title", "Budget summary") }}</h2>
-                    <p class="text-muted mb-0">{{ t.get("finance.results.subtitle", "Review the current allocation, remaining budget, and the status of the plan.") }}</p>
+                    <h2 class="section-title mb-1">{{ t.get("finance.smartBudget.summary", "Արդյունքների ամփոփում") }}</h2>
+                    <p class="text-muted mb-0">{{ t.get("finance.smartBudget.summarySubtitle", "Համակարգը հաշվարկել է առաջարկվող բաշխումը, սցենարները և ֆինանսական ռիսկերի պատկերը։") }}</p>
                 </div>
-                <span class="risk-pill {{ budget_state.status_class }}">{{ budget_state.statusLabel }}</span>
+                <span class="risk-pill {{ finance_summary.overall_risk_class }}">{{ finance_summary.overall_risk_level }}</span>
             </div>
 
             <div class="row g-3 mb-4">
                 <div class="col-md-6 col-xl-3">
-                    <div class="metric-card summary-card">
-                        <span class="metric-label">{{ t.get("finance.card.total_budget", "Total budget") }}</span>
-                        <div class="metric-value">{{ display_currency(budget_summary.total_budget) }}</div>
+                    <div class="metric-card summary-card finance-summary-card">
+                        <span class="metric-label">{{ t.get("finance.smartBudget.availableCapital", "Հասանելի կապիտալ") }}</span>
+                        <div class="metric-value">{{ display_currency(finance_summary.available_capital) }}</div>
                     </div>
                 </div>
                 <div class="col-md-6 col-xl-3">
-                    <div class="metric-card summary-card">
-                        <span class="metric-label">{{ t.get("finance.card.allocated_amount", "Allocated amount") }}</span>
-                        <div class="metric-value">{{ display_currency(budget_summary.allocated_amount) }}</div>
+                    <div class="metric-card summary-card finance-summary-card">
+                        <span class="metric-label">{{ t.get("finance.smartBudget.plannedAllocation", "Պլանավորված բաշխում") }}</span>
+                        <div class="metric-value">{{ display_currency(finance_summary.total_allocated) }}</div>
                     </div>
                 </div>
                 <div class="col-md-6 col-xl-3">
-                    <div class="metric-card summary-card {% if budget_summary.remaining_budget < 0 %}summary-card-primary{% endif %}">
-                        <span class="metric-label">{{ t.get("finance.card.remaining_budget", "Remaining budget") }}</span>
-                        <div class="metric-value">{{ display_currency(budget_summary.remaining_budget) }}</div>
+                    <div class="metric-card summary-card finance-summary-card {% if finance_summary.free_cash < 0 %}summary-card-primary{% endif %}">
+                        <span class="metric-label">{{ t.get("finance.smartBudget.freeCash", "Ազատ մնացորդ") }}</span>
+                        <div class="metric-value">{{ display_currency(finance_summary.free_cash) }}</div>
                     </div>
                 </div>
                 <div class="col-md-6 col-xl-3">
-                    <div class="metric-card summary-card summary-card-primary finance-status-card">
-                        <span class="metric-label">{{ t.get("finance.card.status", "Budget status") }}</span>
-                        <div class="metric-value finance-status-value">{{ budget_state.statusLabel }}</div>
+                    <div class="metric-card summary-card summary-card-primary finance-summary-card">
+                        <span class="metric-label">{{ t.get("finance.smartBudget.stabilityLevel", "Ֆինանսական կայունության մակարդակ") }}</span>
+                        <div class="metric-value finance-status-value">{{ finance_summary.sustainability_status }}</div>
+                        <p class="metric-note mb-0 mt-2">
+                            {{ t.get("finance.smartBudget.recommendedScenario", "Առաջարկվող սցենար") }}՝ {{ finance_summary.recommended_scenario }}
+                        </p>
                     </div>
                 </div>
             </div>
@@ -100,26 +184,36 @@
             <div class="app-card mb-4">
                 <div class="section-header mb-3">
                     <div>
-                        <h2 class="section-title mb-1">{{ t.get("finance.table.title", "Allocation breakdown") }}</h2>
-                        <p class="text-muted mb-0">{{ t.get("finance.table.subtitle", "See how each budget category contributes to the overall plan.") }}</p>
+                        <h2 class="section-title mb-1">{{ t.get("finance.smartBudget.allocationTitle", "Առաջարկվող բյուջեի բաշխում") }}</h2>
+                        <p class="text-muted mb-0">{{ t.get("finance.smartBudget.allocationSubtitle", "Բաշխումը հաշվարկված է ըստ հասանելի կապիտալի, ծախսերի բեռի և բիզնես նպատակի։") }}</p>
                     </div>
                 </div>
 
-                <div class="table-responsive">
-                    <table class="table align-middle comparison-table mb-0">
+                <div class="table-responsive finance-table-wrap">
+                    <table class="table align-middle comparison-table finance-responsive-table mb-0">
                         <thead>
                             <tr>
-                                <th>{{ t.get("finance.table.category", "Category") }}</th>
-                                <th class="table-number">{{ t.get("finance.table.amount", "Amount") }}</th>
-                                <th class="table-number">{{ t.get("finance.table.percentage", "Percentage") }}</th>
+                                <th>{{ t.get("finance.smartBudget.direction", "Ուղղություն") }}</th>
+                                <th class="table-number">{{ t.get("finance.smartBudget.amount", "Գումար") }}</th>
+                                <th class="table-number">{{ t.get("finance.smartBudget.share", "Մասնաբաժին") }}</th>
+                                <th>{{ t.get("finance.smartBudget.purpose", "Նշանակություն") }}</th>
                             </tr>
                         </thead>
                         <tbody>
-                            {% for row in budget_rows %}
+                            {% for row in allocation_rows %}
                             <tr>
-                                <td>{{ t.get("finance.field." ~ row.field_name, row.field_name.replace("_", " ")|title) }}</td>
-                                <td class="table-number">{{ display_currency(row.amount) }}</td>
-                                <td class="table-number">{{ display_percent(row.percentage) }}</td>
+                                <td data-label="{{ t.get('finance.smartBudget.direction', 'Ուղղություն') }}">{{ t.get(allocation_label_keys.get(row.field_name), row.label) }}</td>
+                                <td class="table-number" data-label="{{ t.get('finance.smartBudget.amount', 'Գումար') }}">{{ display_currency(row.amount) }}</td>
+                                <td class="table-number" data-label="{{ t.get('finance.smartBudget.share', 'Մասնաբաժին') }}">{{ display_percent(row.percentage) }}</td>
+                                <td data-label="{{ t.get('finance.smartBudget.purpose', 'Նշանակություն') }}"><span class="table-meta finance-difference-text">
+                                    {% if row.field_name == "free_cash" %}
+                                    {{ t.get("finance.smartBudget.purpose.flexibility", row.importance_label) }}
+                                    {% elif row.priority_type == "normative" %}
+                                    {{ t.get("finance.smartBudget.purpose.mandatory", row.importance_label) }}
+                                    {% else %}
+                                    {{ t.get("finance.smartBudget.purpose.supporting", row.importance_label) }}
+                                    {% endif %}
+                                </span></td>
                             </tr>
                             {% endfor %}
                         </tbody>
@@ -127,171 +221,102 @@
                 </div>
             </div>
 
-            <div class="app-card">
+            <div class="app-card mb-4">
                 <div class="section-header mb-3">
                     <div>
-                        <h2 class="section-title mb-1">{{ t.get("finance.recommendations.title", "Recommendations") }}</h2>
-                        <p class="text-muted mb-0">{{ t.get("finance.recommendations.subtitle", "Use these quick checks to adjust the budget before execution.") }}</p>
+                        <h2 class="section-title mb-1">{{ t.get("finance.smartBudget.scenarioAnalysis", "Սցենարային վերլուծություն") }}</h2>
+                        <p class="text-muted mb-0">{{ t.get("finance.smartBudget.scenarioSubtitle", "Համեմատիր տարբեր զարգացման ուղիները՝ ըստ եկամտի, ծախսերի, շահույթի և կայունության գնահատման։") }}</p>
+                    </div>
+                </div>
+
+                <div class="table-responsive finance-table-wrap">
+                    <table class="table align-middle comparison-table finance-responsive-table mb-0">
+                        <thead>
+                            <tr>
+                                <th>{{ t.get("finance.smartBudget.scenario", "Սցենար") }}</th>
+                                <th class="table-number">{{ t.get("finance.smartBudget.revenue", "Եկամուտ") }}</th>
+                                <th class="table-number">{{ t.get("finance.smartBudget.expenses", "Ծախսեր") }}</th>
+                                <th class="table-number">{{ t.get("finance.smartBudget.profit", "Շահույթ") }}</th>
+                                <th>{{ t.get("finance.smartBudget.risk", "Ռիսկ") }}</th>
+                                <th>{{ t.get("finance.smartBudget.stabilityAssessment", "Կայունության գնահատում") }}</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for row in scenario_rows %}
+                            <tr class="{% if row.is_recommended %}finance-scenario-row-recommended{% endif %}">
+                                <td data-label="{{ t.get('finance.smartBudget.scenario', 'Սցենար') }}">
+                                    <div class="finance-scenario-name-row">
+                                        <span>{{ t.get(scenario_label_keys.get(row.scenario_key), row.scenario_name) }}</span>
+                                        {% if row.is_recommended %}
+                                        <span class="soft-badge finance-scenario-inline-badge">{{ t.get("finance.smartBudget.recommendedBadge", "Առաջարկվող") }}</span>
+                                        {% endif %}
+                                    </div>
+                                </td>
+                                <td class="table-number" data-label="{{ t.get('finance.smartBudget.revenue', 'Եկամուտ') }}">{{ display_currency(row.expected_revenue) }}</td>
+                                <td class="table-number" data-label="{{ t.get('finance.smartBudget.expenses', 'Ծախսեր') }}">{{ display_currency(row.estimated_expenses) }}</td>
+                                <td class="table-number" data-label="{{ t.get('finance.smartBudget.profit', 'Շահույթ') }}">{{ display_currency(row.expected_profit) }}</td>
+                                <td data-label="{{ t.get('finance.smartBudget.risk', 'Ռիսկ') }}"><span class="risk-pill {{ row.risk_class }}">{{ row.risk_level }}</span></td>
+                                <td data-label="{{ t.get('finance.smartBudget.stabilityAssessment', 'Կայունության գնահատում') }}">
+                                    <span class="risk-pill {{ row.sustainability_class }}">{{ row.sustainability_status }}</span>
+                                    <div class="table-meta">{{ t.get("finance.smartBudget.bufferMonths", "Բուֆեր") }}՝ {{ display_number(row.buffer_months, 2) }} {{ t.get("finance.smartBudget.months", "ամիս") }}</div>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            {% if warnings %}
+            <div class="app-card mb-4 finance-warning-panel">
+                <div class="section-header mb-3">
+                    <div>
+                        <h2 class="section-title mb-1">{{ t.get("finance.smartBudget.warningsTitle", "Ֆինանսական ռիսկեր") }}</h2>
+                    </div>
+                </div>
+
+                {% for warning in warnings %}
+                <div class="alert alert-warning finance-warning-card {% if not loop.last %}mb-3{% else %}mb-0{% endif %}" role="alert">
+                    {{ warning.message }}
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+
+            {% if recommendations %}
+            <div class="app-card mb-4 finance-recommendation-panel">
+                <div class="section-header mb-3">
+                    <div>
+                        <h2 class="section-title mb-1">{{ t.get("finance.smartBudget.recommendationsTitle", "Համակարգի առաջարկություններ") }}</h2>
                     </div>
                 </div>
 
                 {% for recommendation in recommendations %}
-                <div class="alert alert-{{ recommendation.tone }} {% if not loop.last %}mb-3{% else %}mb-0{% endif %}" role="alert">
-                    {% if recommendation.message is defined %}
-                    {{ recommendation.message }}
-                    {% else %}
-                    {{ t.get(recommendation.key, recommendation.key) }}
-                    {% endif %}
+                <div class="alert alert-info finance-recommendation-card {% if not loop.last %}mb-3{% else %}mb-0{% endif %}" role="alert">
+                    {{ recommendation }}
                 </div>
                 {% endfor %}
             </div>
+            {% endif %}
 
-            <div class="app-card mt-4">
+            <div class="app-card finance-method-panel">
                 <div class="section-header mb-3">
                     <div>
-                        <h2 class="section-title mb-1">{{ t.get("finance.risks.title", "Budget risk assessment") }}</h2>
+                        <h2 class="section-title mb-1">{{ t.get("finance.smartBudget.methodNotesTitle", "Կիրառված մեթոդներ") }}</h2>
+                        <p class="text-muted mb-0">{{ t.get("finance.smartBudget.methodNotesSubtitle", "Համակարգը կիրառում է համակցված բյուջետավորման մոտեցում՝ բաշխումները դարձնելով ավելի ճկուն և նպատակային։") }}</p>
                     </div>
                 </div>
 
-                {% for risk in budget_risks %}
-                <div class="alert alert-{{ risk.tone }} {% if not loop.last %}mb-3{% else %}mb-0{% endif %}" role="alert">
-                    {{ t.get(risk.key, risk.key) }}
-                </div>
+                <ul class="mb-3 finance-method-list">
+                    <li>{{ t.get("finance.smartBudget.methods.normative", "Նորմատիվային բյուջետավորման մեթոդ") }}</li>
+                    <li>{{ t.get("finance.smartBudget.methods.percentage", "Տոկոսային բաշխման մեթոդ") }}</li>
+                    <li>{{ t.get("finance.smartBudget.methods.priority", "Առաջնահերթությունների վրա հիմնված բաշխման մեթոդ") }}</li>
+                    <li>{{ t.get("finance.smartBudget.methods.scenario", "Սցենարային բյուջետավորում") }}</li>
+                </ul>
+
+                {% for note in method_notes[1:] %}
+                <p class="table-meta finance-method-note {% if not loop.last %}mb-2{% else %}mb-0{% endif %}">{{ note }}</p>
                 {% endfor %}
-            </div>
-
-            <div class="app-card mt-4">
-                <div class="section-header mb-3">
-                    <div>
-                        <h2 class="section-title mb-1">{{ t.get("finance.recommended.title", "Recommended budget allocation") }}</h2>
-                        <p class="text-muted mb-0">{{ t.get("finance.recommended.subtitle", "The system suggests a balanced allocation to support more stable budget management.") }}</p>
-                    </div>
-                </div>
-
-                <div class="table-responsive">
-                    <table class="table align-middle comparison-table mb-0">
-                        <thead>
-                            <tr>
-                                <th>{{ t.get("finance.table.category", "Category") }}</th>
-                                <th class="table-number">{{ t.get("finance.recommended.amount", "Recommended amount") }}</th>
-                                <th class="table-number">{{ t.get("finance.recommended.percentage", "Recommended percentage") }}</th>
-                                <th>{{ t.get("finance.recommended.difference", "Difference") }}</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for row in recommended_budget.rows %}
-                            <tr>
-                                <td>{{ t.get(row.label_key, row.field_name.replace("_", " ")|title) }}</td>
-                                <td class="table-number">{{ display_currency(row.recommended_amount) }}</td>
-                                <td class="table-number">{{ display_percent(row.recommended_percentage) }}</td>
-                                <td>
-                                    <span class="table-meta finance-difference-text">
-                                    {% if row.difference_status == "match" %}
-                                    {{ t.get("finance.recommended.difference.match", "Matches the recommended amount") }}
-                                    {% elif row.difference_status == "over" %}
-                                    {{ t.get("finance.recommended.difference.over", "Exceeds the recommended amount by {amount}").format(amount=display_currency(row.difference_amount)) }}
-                                    {% else %}
-                                    {{ t.get("finance.recommended.difference.under", "Below the recommended amount by {amount}").format(amount=display_currency(row.difference_amount)) }}
-                                    {% endif %}
-                                    </span>
-                                </td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-
-                <div class="alert alert-{{ recommended_budget.summary_tone }} mt-3 mb-0" role="alert">
-                    {{ t.get(recommended_budget.summary_key, recommended_budget.summary_key) }}
-                </div>
-            </div>
-
-            <div class="app-card mt-4">
-                <div class="section-header mb-3">
-                    <div>
-                        <h2 class="section-title mb-1">{{ t.get("finance.scenarios.title", "Budget scenario comparison") }}</h2>
-                        <p class="text-muted mb-0">{{ t.get("finance.scenarios.subtitle", "Compare conservative, balanced, and growth scenarios to see the possible budget impact.") }}</p>
-                    </div>
-                </div>
-
-                <div class="finance-scenario-recommendation mb-4">
-                    <div class="finance-scenario-recommendation-header">
-                        <div>
-                            <h3 class="section-title mb-1">{{ t.get("finance.scenarios.recommended.title", "Recommended scenario") }}</h3>
-                        </div>
-                        <span class="soft-badge">{{ t.get("finance.scenarios.recommended.badge", "Recommended") }}</span>
-                    </div>
-                    <div class="finance-scenario-recommendation-summary">
-                        <div>
-                            <div class="finance-scenario-recommendation-name">
-                                {{ budget_state.recommendedScenario }}
-                            </div>
-                            <div class="table-meta">{{ budget_state.scenarioGoal }}</div>
-                        </div>
-                        <span class="risk-pill {{ budget_state.scenario_risk_class }}">
-                            {{ budget_state.scenarioRiskLabel }}
-                        </span>
-                    </div>
-                    <p class="finance-scenario-recommendation-message mb-0">
-                        {{ budget_state.message }}
-                    </p>
-                </div>
-
-                <div class="finance-scenario-chart mb-4">
-                    {% for metric in scenario_comparison.chart_metrics %}
-                    <div class="finance-scenario-metric">
-                        <div class="finance-scenario-metric-title">{{ t.get(metric.label_key, metric.label_key) }}</div>
-                        <div class="finance-scenario-bar-list">
-                            {% for item in metric.bars %}
-                            <div class="finance-scenario-bar-row {% if item.is_recommended %}finance-scenario-bar-row-recommended{% endif %}">
-                                <div class="finance-scenario-bar-meta">
-                                    <span>{{ t.get(item.label_key, item.label_key) }}</span>
-                                    <span class="table-meta">{{ display_currency(item.value) }}</span>
-                                </div>
-                                <div class="finance-scenario-bar-track">
-                                    <span class="finance-scenario-bar {{ item.bar_class }}" style="width: {{ item.width_percent }}%;"></span>
-                                </div>
-                            </div>
-                            {% endfor %}
-                        </div>
-                    </div>
-                    {% endfor %}
-                </div>
-
-                <div class="table-responsive">
-                    <table class="table align-middle comparison-table mb-0">
-                        <thead>
-                            <tr>
-                                <th>{{ t.get("table.scenario", "Scenario") }}</th>
-                                <th class="table-number">{{ t.get("finance.card.allocated_amount", "Allocated amount") }}</th>
-                                <th class="table-number">{{ t.get("finance.card.remaining_budget", "Remaining budget") }}</th>
-                                <th class="table-number">{{ t.get("finance.field.marketing_budget", "Marketing budget") }}</th>
-                                <th class="table-number">{{ t.get("finance.field.operational_budget", "Operational budget") }}</th>
-                                <th>{{ t.get("table.risk", "Risk") }}</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for row in scenario_comparison.rows %}
-                            <tr class="{% if row.is_recommended %}finance-scenario-row-recommended{% endif %}">
-                                <td>
-                                    <div class="finance-scenario-name-row">
-                                        <span>{{ t.get(row.label_key, row.label_key) }}</span>
-                                        {% if row.is_recommended %}
-                                        <span class="soft-badge finance-scenario-inline-badge">{{ t.get("finance.scenarios.recommended.badge", "Recommended") }}</span>
-                                        {% endif %}
-                                    </div>
-                                    <div class="table-meta">{{ t.get(row.goal_key, row.goal_key) }}</div>
-                                </td>
-                                <td class="table-number">{{ display_currency(row.total_allocated_amount) }}</td>
-                                <td class="table-number">{{ display_currency(row.remaining_amount) }}</td>
-                                <td class="table-number">{{ display_currency(row.marketing_amount) }}</td>
-                                <td class="table-number">{{ display_currency(row.operational_amount) }}</td>
-                                <td><span class="risk-pill {{ row.risk_class }}">{{ t.get(row.risk_key, row.risk_key) }}</span></td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
             </div>
             {% endif %}
         </div>

@@ -352,16 +352,31 @@ class FlaskAppTests(unittest.TestCase):
 
     def _save_finance(self, client, **overrides):
         payload = {
-            "total_budget": "1000",
-            "product_cost_budget": "400",
-            "marketing_budget": "300",
-            "delivery_budget": "80",
-            "packaging_budget": "40",
-            "operational_budget": "130",
-            "reserve_budget": "150",
+            "available_capital": "12000",
+            "organization_type": "ՍՊԸ",
+            "business_activity": "Օնլայն խանութ",
+            "business_status": "Գործող բիզնես",
+            "business_goal": "Հավասարակշռված զարգացում",
+            "average_monthly_revenue": "14000",
+            "fixed_costs": "1200",
+            "variable_costs": "3500",
+            "employees_count": "2",
         }
         payload.update(overrides)
         return client.post("/finance?lang=en", data=payload)
+
+    def _seed_finance_insights_record(self, user_id, **overrides):
+        record = {
+            "user_id": user_id,
+            "total_budget": 1000.0,
+            "product_cost_budget": 400.0,
+            "marketing_budget": 300.0,
+            "reserve_budget": 150.0,
+            "created_at": "2026-05-01T10:00:00",
+            "updated_at": "2026-05-01T10:00:00",
+        }
+        record.update(overrides)
+        save_finance_records(self.finance_file, [record])
 
     def _user_by_email(self, email):
         normalized_email = email.strip().lower()
@@ -490,11 +505,12 @@ class FlaskAppTests(unittest.TestCase):
     def test_api_analyze_adds_finance_warnings_from_saved_budget_data(self):
         with self.client as client:
             self._sign_up(client)
-            self._save_finance(
-                client,
-                product_cost_budget="700",
-                marketing_budget="150",
-                reserve_budget="50",
+            current_user = self._user_by_email("demo@example.com")
+            self._seed_finance_insights_record(
+                current_user["id"],
+                product_cost_budget=700.0,
+                marketing_budget=150.0,
+                reserve_budget=50.0,
             )
             response = client.post("/api/analyze", json=self.payload)
             data = response.get_json()
@@ -521,7 +537,8 @@ class FlaskAppTests(unittest.TestCase):
     def test_api_analyze_adds_aligned_finance_message_when_no_issues_found(self):
         with self.client as client:
             self._sign_up(client)
-            self._save_finance(client)
+            current_user = self._user_by_email("demo@example.com")
+            self._seed_finance_insights_record(current_user["id"])
             response = client.post("/api/analyze", json=self.payload)
             data = response.get_json()
 
@@ -534,6 +551,22 @@ class FlaskAppTests(unittest.TestCase):
                     "message": "Բյուջեն համահունչ է ընտրված ռազմավարությանը",
                 }
             ],
+        )
+
+    def test_api_analyze_adds_finance_insights_from_saved_smart_budget_record(self):
+        with self.client as client:
+            self._sign_up(client)
+            finance_response = self._save_finance(client)
+            response = client.post("/api/analyze", json=self.payload)
+            data = response.get_json()
+
+        self.assertEqual(finance_response.status_code, 200)
+        self.assertTrue(data["success"])
+        self.assertIsNotNone(data["data"]["finance_insights"])
+        messages = [item["message"] for item in data["data"]["finance_insights"]["items"]]
+        self.assertIn(
+            "Քո մարքեթինգի բյուջեն կարող է բավարար չլինել առաջարկվող գնային ռազմավարության համար",
+            messages,
         )
 
     def test_api_analyze_saves_history_entry(self):
@@ -572,14 +605,17 @@ class FlaskAppTests(unittest.TestCase):
             body = response.get_data(as_text=True)
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn("Ֆինանսներ և բյուջեի կառավարում", body)
-        self.assertIn("Բյուջեի մուտքեր", body)
-        self.assertIn("Ընդհանուր բյուջե", body)
-        self.assertIn("Ապրանքի ծախսերի բյուջե", body)
-        self.assertIn("Պահուստային բյուջե", body)
+        self.assertIn("Խելացի բյուջեի պլանավորում", body)
+        self.assertIn("Հասանելի կապիտալ", body)
+        self.assertIn("Կազմակերպության տեսակ", body)
+        self.assertIn("Գործունեության ոլորտ", body)
+        self.assertIn("Լրացուցիչ ֆինանսական տվյալներ", body)
+        self.assertIn("Կազմել բյուջե", body)
         self.assertIn('href="/finance?lang=hy"', body)
+        self.assertNotIn('name="marketing_budget"', body)
+        self.assertNotIn('name="product_cost_budget"', body)
 
-    def test_finance_page_calculates_budget_summary_and_recommendations(self):
+    def test_finance_page_renders_smart_budget_results_and_risk_sections(self):
         currency_code = load_business_dataset().business_settings.currency.upper()
 
         with self.client as client:
@@ -587,99 +623,140 @@ class FlaskAppTests(unittest.TestCase):
             response = client.post(
                 "/finance?lang=en",
                 data={
-                    "total_budget": "1000",
-                    "product_cost_budget": "400",
-                    "marketing_budget": "350",
-                    "delivery_budget": "100",
-                    "packaging_budget": "50",
-                    "operational_budget": "70",
-                    "reserve_budget": "30",
+                    "available_capital": "1000",
+                    "organization_type": "ՍՊԸ",
+                    "business_activity": "Ծառայություններ",
+                    "business_status": "Գործող բիզնես",
+                    "business_goal": "Աճ",
+                    "fixed_costs": "1600",
+                    "variable_costs": "600",
+                    "employees_count": "3",
                 },
             )
             body = response.get_data(as_text=True)
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn("Budget summary", body)
-        self.assertIn("Allocated amount", body)
-        self.assertIn("Remaining budget", body)
-        self.assertIn("Budget status", body)
+        self.assertIn("Results summary", body)
+        self.assertIn("Planned allocation", body)
+        self.assertIn("Free cash", body)
+        self.assertIn("Financial stability level", body)
         self.assertIn(format_currency_value(1000, currency_code), body)
-        self.assertIn(format_currency_value(30, currency_code), body)
-        self.assertIn("35.0%", body)
-        self.assertIn("3.0%", body)
-        self.assertIn("Balanced", body)
-        self.assertIn("Reserve budget is below 10% of the total budget.", body)
-        self.assertIn("Marketing budget is above 30% of the total budget.", body)
-        self.assertIn("Budget is balanced. Current allocations match the total budget.", body)
-        self.assertIn("Budget risk assessment", body)
-        self.assertIn("Product cost share is high. This may reduce profitability.", body)
-        self.assertIn("Operational budget is low. This may limit day-to-day business operations.", body)
-        self.assertIn("Recommended budget allocation", body)
-        self.assertIn("The recommended allocation can reduce budget risks and improve expense control.", body)
-        self.assertIn("Platform/service budget", body)
-        self.assertIn("Exceeds the recommended amount by $100.00", body)
-        self.assertIn("Below the recommended amount by $50.00", body)
-        self.assertIn("Matches the recommended amount", body)
-        self.assertIn("Budget scenario comparison", body)
-        self.assertIn("Conservative", body)
-        self.assertIn("Balanced", body)
-        self.assertIn("Growth", body)
-        self.assertIn("Stable cost control", body)
-        self.assertIn("Low", body)
-        self.assertIn("Medium", body)
-        self.assertIn("High", body)
+        self.assertIn("Suggested budget allocation", body)
+        self.assertIn("Tax reserve", body)
+        self.assertIn("Inventory / purchasing", body)
+        self.assertIn("Scenario analysis", body)
+        self.assertIn("Minimum growth scenario", body)
+        self.assertIn("Stable development scenario", body)
+        self.assertIn("Fast growth scenario", body)
+        self.assertIn('<h2 class="section-title mb-1">Financial risks</h2>', body)
+        self.assertIn("Հասանելի կապիտալը պակաս է ամսական ֆիքսված ծախսերից։", body)
+        self.assertIn("System recommendations", body)
+        self.assertIn("Applied methods", body)
+        self.assertIn("Normative budgeting method", body)
 
-    def test_finance_page_shows_stable_risk_message_when_no_risks_detected(self):
+    def test_finance_page_hides_warning_section_when_no_risks_exist(self):
         with self.client as client:
             self._sign_up(client)
             response = client.post(
                 "/finance?lang=en",
                 data={
-                    "total_budget": "1000",
-                    "product_cost_budget": "400",
-                    "marketing_budget": "200",
-                    "delivery_budget": "100",
-                    "packaging_budget": "50",
-                    "operational_budget": "120",
-                    "reserve_budget": "130",
+                    "available_capital": "12000",
+                    "organization_type": "ՍՊԸ",
+                    "business_activity": "Օնլայն խանութ",
+                    "business_status": "Գործող բիզնես",
+                    "business_goal": "Հավասարակշռված զարգացում",
+                    "average_monthly_revenue": "14000",
+                    "fixed_costs": "1200",
+                    "variable_costs": "3500",
+                    "employees_count": "2",
                 },
             )
             body = response.get_data(as_text=True)
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn("Budget risk assessment", body)
-        self.assertIn("Budget allocation is stable. Core expenses are within acceptable limits.", body)
-        self.assertIn("Recommended budget allocation", body)
-        self.assertIn("Your budget is close to the recommended stable allocation.", body)
-        self.assertIn("Budget scenario comparison", body)
+        self.assertIn("Suggested budget allocation", body)
+        self.assertIn("Scenario analysis", body)
+        self.assertNotIn('<h2 class="section-title mb-1">Financial risks</h2>', body)
+        self.assertNotIn('class="alert alert-warning', body)
 
     def test_finance_data_is_saved_after_post(self):
         with self.client as client:
             self._sign_up(client)
-            client.post(
-                "/finance?lang=en",
-                data={
-                    "total_budget": "1000",
-                    "product_cost_budget": "400",
-                    "marketing_budget": "120",
-                    "delivery_budget": "90",
-                    "packaging_budget": "40",
-                    "operational_budget": "200",
-                    "reserve_budget": "150",
-                },
-            )
+            self._save_finance(client)
             current_user = self._user_by_email("demo@example.com")
 
         finance_records = load_finance_records(self.finance_file)
         self.assertEqual(len(finance_records), 1)
         self.assertEqual(finance_records[0]["user_id"], current_user["id"])
-        self.assertEqual(finance_records[0]["total_budget"], 1000.0)
-        self.assertEqual(finance_records[0]["marketing_budget"], 120.0)
+        self.assertEqual(finance_records[0]["planner_version"], "smart_budget_planner_v1")
+        self.assertEqual(finance_records[0]["input_values"]["available_capital"], 12000.0)
+        self.assertEqual(finance_records[0]["input_values"]["organization_type"], "ՍՊԸ")
+        self.assertEqual(finance_records[0]["summary"]["planner_name_hy"], "Խելացի բյուջեի պլանավորում")
+        self.assertGreater(len(finance_records[0]["allocation_rows"]), 0)
+        self.assertGreater(len(finance_records[0]["scenario_rows"]), 0)
+        self.assertGreater(len(finance_records[0]["recommendations"]), 0)
+        self.assertIn("Hybrid budget formation and allocation method", finance_records[0]["method_notes"])
+        self.assertEqual(finance_records[0]["total_budget"], 12000.0)
+        self.assertGreater(finance_records[0]["marketing_budget"], 0.0)
         self.assertIn("created_at", finance_records[0])
         self.assertIn("updated_at", finance_records[0])
-        self.assertNotIn("budget_summary", finance_records[0])
-        self.assertNotIn("status", finance_records[0])
-        self.assertNotIn("recommendations", finance_records[0])
+
+    def test_finance_post_saves_user_specific_inputs_and_generated_results(self):
+        client_a = app.test_client()
+        client_b = app.test_client()
+
+        self._sign_up(client_a, name="Planner User A", email="planner-a@example.com")
+        self._sign_up(client_b, name="Planner User B", email="planner-b@example.com")
+
+        response_a = client_a.post(
+            "/finance?lang=en",
+            data={
+                "available_capital": "9000",
+                "organization_type": "ԱՁ",
+                "business_activity": "Ձեռագործ արտադրանք",
+                "business_status": "Նոր բիզնես",
+                "business_goal": "Կայունություն",
+            },
+        )
+        response_b = client_b.post(
+            "/finance?lang=en",
+            data={
+                "available_capital": "18000",
+                "organization_type": "ՍՊԸ",
+                "business_activity": "Օնլայն խանութ",
+                "business_status": "Գործող բիզնես",
+                "business_goal": "Աճ",
+                "average_monthly_revenue": "22000",
+                "fixed_costs": "2500",
+                "variable_costs": "5400",
+                "employees_count": "5",
+            },
+        )
+
+        user_a = self._user_by_email("planner-a@example.com")
+        user_b = self._user_by_email("planner-b@example.com")
+        finance_records = load_finance_records(self.finance_file)
+        records_by_user = {record["user_id"]: record for record in finance_records}
+
+        self.assertEqual(response_a.status_code, 200)
+        self.assertEqual(response_b.status_code, 200)
+        self.assertEqual(len(finance_records), 2)
+
+        record_a = records_by_user[user_a["id"]]
+        record_b = records_by_user[user_b["id"]]
+
+        self.assertEqual(record_a["input_values"]["available_capital"], 9000.0)
+        self.assertEqual(record_a["input_values"]["business_status"], "Նոր բիզնես")
+        self.assertIsNone(record_a["input_values"]["average_monthly_revenue"])
+        self.assertEqual(record_a["summary"]["available_capital"], 9000.0)
+        self.assertEqual(len(record_a["scenario_rows"]), 3)
+
+        self.assertEqual(record_b["input_values"]["available_capital"], 18000.0)
+        self.assertEqual(record_b["input_values"]["business_goal"], "Աճ")
+        self.assertEqual(record_b["summary"]["available_capital"], 18000.0)
+        self.assertGreater(record_b["marketing_budget"], 0.0)
+        self.assertGreater(len(record_b["allocation_rows"]), 0)
+        self.assertIn("Hybrid budget formation and allocation method", record_b["method_notes"])
 
     def test_finance_get_preloads_saved_data(self):
         with self.client as client:
@@ -687,24 +764,64 @@ class FlaskAppTests(unittest.TestCase):
             client.post(
                 "/finance?lang=en",
                 data={
-                    "total_budget": "1500",
-                    "product_cost_budget": "500",
-                    "marketing_budget": "250",
-                    "delivery_budget": "125",
-                    "packaging_budget": "75",
-                    "operational_budget": "300",
-                    "reserve_budget": "250",
+                    "available_capital": "15000",
+                    "organization_type": "ՍՊԸ",
+                    "business_activity": "Ծառայություններ",
+                    "business_status": "Գործող բիզնես",
+                    "business_goal": "Կայունություն",
+                    "average_monthly_revenue": "18000",
+                    "fixed_costs": "3200",
+                    "variable_costs": "4200",
+                    "employees_count": "6",
                 },
             )
             response = client.get("/finance?lang=en")
             body = response.get_data(as_text=True)
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn('value="1500"', body)
-        self.assertIn('value="500"', body)
-        self.assertIn('value="250"', body)
-        self.assertIn("Budget summary", body)
-        self.assertIn("Balanced", body)
+        self.assertIn('value="15000"', body)
+        self.assertIn('value="18000"', body)
+        self.assertIn('option value="ՍՊԸ" selected', body)
+        self.assertIn('option value="Ծառայություններ" selected', body)
+        self.assertIn('option value="Կայունություն" selected', body)
+        self.assertIn("Results summary", body)
+
+    def test_finance_post_rejects_negative_and_invalid_numeric_input(self):
+        base_payload = {
+            "available_capital": "12000",
+            "organization_type": "ՍՊԸ",
+            "business_activity": "Օնլայն խանութ",
+            "business_status": "Գործող բիզնես",
+            "business_goal": "Հավասարակշռված զարգացում",
+            "average_monthly_revenue": "14000",
+            "fixed_costs": "1200",
+            "variable_costs": "3500",
+            "employees_count": "2",
+        }
+
+        with self.client as client:
+            self._sign_up(client)
+
+            cases = [
+                (
+                    {**base_payload, "available_capital": "-5"},
+                    "Հասանելի կապիտալ պետք է լինի 0-ից մեծ։",
+                ),
+                (
+                    {**base_payload, "fixed_costs": "not-a-number"},
+                    "Ամսական ֆիքսված ծախսեր պետք է լինի վավեր թիվ։",
+                ),
+            ]
+
+            for payload, error_message in cases:
+                with self.subTest(error_message=error_message):
+                    response = client.post("/finance?lang=en", data=payload)
+                    body = response.get_data(as_text=True)
+
+                    self.assertEqual(response.status_code, 400)
+                    self.assertIn(error_message, body)
+
+        self.assertEqual(load_finance_records(self.finance_file), [])
 
     def test_finance_user_isolation_hides_other_users_budget(self):
         client_a = app.test_client()
@@ -715,13 +832,15 @@ class FlaskAppTests(unittest.TestCase):
         client_b.post(
             "/finance?lang=en",
             data={
-                "total_budget": "7777",
-                "product_cost_budget": "3000",
-                "marketing_budget": "1000",
-                "delivery_budget": "500",
-                "packaging_budget": "250",
-                "operational_budget": "1500",
-                "reserve_budget": "1527",
+                "available_capital": "7777",
+                "organization_type": "ՍՊԸ",
+                "business_activity": "Օնլայն խանութ",
+                "business_status": "Գործող բիզնես",
+                "business_goal": "Աճ",
+                "average_monthly_revenue": "9000",
+                "fixed_costs": "1500",
+                "variable_costs": "2500",
+                "employees_count": "2",
             },
         )
 
@@ -730,8 +849,8 @@ class FlaskAppTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertNotIn('value="7777"', body)
-        self.assertNotIn('value="3000"', body)
-        self.assertNotIn('<span class="risk-pill ', body)
+        self.assertNotIn('value="9000"', body)
+        self.assertNotIn('<h2 class="section-title mb-1">Results summary</h2>', body)
 
     def test_saved_history_persists_after_logout_and_login(self):
         product_name = "Persisted Workspace Product"
