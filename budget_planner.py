@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
+from financial_formatting import format_armenian_dram_value
+
 
 PLANNER_NAME = "Smart Budget Planner"
 PLANNER_NAME_HY = "Խելացի բյուջեի պլանավորում"
@@ -473,8 +475,8 @@ def _sustainability_status(buffer_months, expected_profit, expected_revenue):
     if buffer_months >= 1.25 and expected_profit >= 0:
         return "Կայուն"
     if buffer_months >= 0.75 or expected_profit >= -(expected_revenue * 0.08):
-        return "Սահմանային"
-    return "Անբավարար"
+        return "Միջին"
+    return "Ռիսկային"
 
 
 def _recommended_scenario_key(values, overall_risk_level, free_cash, monthly_fixed_costs):
@@ -488,6 +490,208 @@ def _recommended_scenario_key(values, overall_risk_level, free_cash, monthly_fix
     ):
         return "rapid_growth"
     return "stable_growth"
+
+
+def _allocation_purpose(field_name, values):
+    activity = values["business_activity"]
+    goal = values["business_goal"]
+
+    if field_name == "tax_reserve":
+        return "Հարկային պարտավորությունների ապահովում"
+    if field_name == "payroll_admin_reserve":
+        if activity == "Ծառայություններ":
+            return "Թիմի աշխատանքի և վարչական կայունության ապահովում"
+        return "Աշխատավարձերի և վարչական ծախսերի ապահովում"
+    if field_name == "fixed_costs_coverage":
+        return "Ֆիքսված պարտավորությունների շարունակական ծածկում"
+    if field_name == "variable_costs_coverage":
+        if activity == "Ձեռագործ արտադրանք":
+            return "Նյութերի և արտադրական փոփոխական ծախսերի կառավարում"
+        return "Շրջանառու և փոփոխական ծախսերի ֆինանսավորում"
+    if field_name == "marketing_budget":
+        if activity == "Օնլայն խանութ":
+            return "Առցանց հաճախորդների ներգրավում և վաճառքի աճ"
+        return "Հաճախորդների ներգրավում և վաճառքի աճ"
+    if field_name == "inventory_or_purchase_budget":
+        if activity == "Ծառայություններ":
+            return "Սպասարկման գործիքների և ընթացիկ ռեսուրսների ապահովում"
+        if activity == "Ձեռագործ արտադրանք":
+            return "Նյութերի, պաշարների և պատվերների կատարման ապահովում"
+        return "Ապրանքների ձեռքբերում և շրջանառու պաշարի ձևավորում"
+    if field_name == "operational_budget":
+        if activity == "Ծառայություններ":
+            return "Սպասարկման որակի և գործառնական կայունության ապահովում"
+        return "Գործառնական կայունության և ընթացիկ գործընթացների ապահովում"
+    if field_name == "emergency_reserve":
+        if goal == "Գոյատևում":
+            return "Ֆինանսական ռիսկերի նվազեցում և վճարունակության պահպանում"
+        return "Անկանխատեսելի ռիսկերի դեմ ֆինանսական բուֆերի ձևավորում"
+    if field_name == "reinvestment_budget":
+        if goal == "Աճ":
+            return "Բիզնեսի աճի և ընդլայնման ակտիվ ֆինանսավորում"
+        return "Բիզնեսի զարգացման և ընդլայնման աջակցություն"
+    return "Կարճաժամկետ իրացվելիության և արագ որոշումների պահուստ"
+
+
+def _fixed_cost_pressure_ratio(monthly_fixed_costs, available_capital):
+    if available_capital <= 0:
+        return 1.0
+    return monthly_fixed_costs / available_capital
+
+
+def _allocation_balance_score(allocations, available_capital):
+    if available_capital <= 0:
+        return 0.0
+
+    adaptive_fields = (
+        "variable_costs_coverage",
+        "marketing_budget",
+        "inventory_or_purchase_budget",
+        "operational_budget",
+        "emergency_reserve",
+        "reinvestment_budget",
+    )
+    shares = [allocations[field_name] / available_capital for field_name in adaptive_fields]
+    mean_deviation = sum(abs(share - 0.15) for share in shares) / len(shares)
+    deviation_score = max(0.0, 1.0 - (mean_deviation / 0.20))
+    concentration_score = max(0.0, 1.0 - (max(shares) - 0.30) / 0.20)
+    return min(max((deviation_score * 0.65) + (concentration_score * 0.35), 0.0), 1.0)
+
+
+def _stability_label(score):
+    if score >= 70:
+        return "Կայուն"
+    if score >= 45:
+        return "Միջին"
+    return "Ռիսկային"
+
+
+def _calculate_stability_profile(
+    allocations,
+    available_capital,
+    monthly_fixed_costs,
+    recommended_emergency_reserve,
+    overall_risk_score,
+):
+    reserve_ratio = (
+        allocations["emergency_reserve"] / recommended_emergency_reserve
+        if recommended_emergency_reserve > 0
+        else 1.0
+    )
+    free_cash_ratio = allocations["free_cash"] / available_capital if available_capital else 0.0
+    fixed_cost_ratio = _fixed_cost_pressure_ratio(monthly_fixed_costs, available_capital)
+    balance_score = _allocation_balance_score(allocations, available_capital)
+
+    reserve_score = min(max(reserve_ratio / 1.2, 0.0), 1.0)
+    free_cash_score = min(max((free_cash_ratio + 0.05) / 0.15, 0.0), 1.0)
+    fixed_cost_score = min(max(1.0 - max(fixed_cost_ratio - 0.22, 0.0) / 0.45, 0.0), 1.0)
+    risk_score_component = min(max(1.0 - (overall_risk_score / 100.0), 0.0), 1.0)
+
+    score = int(
+        round(
+            (reserve_score * 30)
+            + (free_cash_score * 25)
+            + (fixed_cost_score * 20)
+            + (risk_score_component * 15)
+            + (balance_score * 10)
+        )
+    )
+    score = max(0, min(score, 100))
+    label = _stability_label(score)
+
+    if reserve_ratio < 1.0:
+        reason = "Արտակարգ պահուստը դեռ չի հասնում առաջարկվող շեմին, ուստի կայունությունը սահմանափակ է։"
+    elif free_cash_ratio < 0:
+        reason = "Ազատ դրամական մնացորդը բացասական է, ինչի պատճառով պլանը բարձր ճնշման տակ է։"
+    elif fixed_cost_ratio > 0.45:
+        reason = "Ֆիքսված ծախսերի ճնշումը բարձր է և նվազեցնում է բյուջեի ճկունությունը։"
+    elif label == "Կայուն":
+        reason = "Պահուստների և ազատ դրամական բուֆերի մակարդակը բավարար է վերահսկվող աշխատանքի համար։"
+    else:
+        reason = "Բյուջեն աշխատունակ է, սակայն պահանջում է պարբերական վերահսկում և ռիսկերի վերագնահատում։"
+
+    return {
+        "stability_score": score,
+        "stability_label": label,
+        "stability_reason": reason,
+        "reserve_ratio": reserve_ratio,
+        "free_cash_ratio": free_cash_ratio,
+        "fixed_cost_ratio": fixed_cost_ratio,
+        "allocation_balance_score": balance_score,
+    }
+
+
+def _scenario_goal_bonus(goal, scenario_key):
+    bonuses = {
+        "Աճ": {"rapid_growth": 6.0, "stable_growth": 3.0, "minimum_growth": 0.0},
+        "Կայունություն": {"rapid_growth": 1.5, "stable_growth": 6.0, "minimum_growth": 3.0},
+        "Գոյատևում": {"rapid_growth": 0.0, "stable_growth": 2.5, "minimum_growth": 6.0},
+        "Հավասարակշռված զարգացում": {"rapid_growth": 2.5, "stable_growth": 5.0, "minimum_growth": 2.5},
+    }
+    return bonuses.get(goal, {}).get(scenario_key, 0.0)
+
+
+def _scenario_selection_score(row, goal, max_profit):
+    profit_score = 0.0
+    if max_profit > 0:
+        profit_score = (max(row["expected_profit"], 0.0) / max_profit) * 38.0
+    elif row["expected_profit"] >= 0:
+        profit_score = 18.0
+    if row["expected_profit"] < 0:
+        profit_score -= 10.0
+
+    sustainability_points = {
+        "Կայուն": 28.0,
+        "Միջին": 18.0,
+        "Ռիսկային": 8.0,
+    }.get(row["sustainability_status"], 12.0)
+    risk_points = max(0.0, 24.0 - max(row["risk_score"] - 20, 0) * 0.35)
+    buffer_points = min(row["buffer_months"] / 1.5, 1.0) * 8.0
+    goal_bonus = _scenario_goal_bonus(goal, row["scenario_key"])
+    return round(profit_score + sustainability_points + risk_points + buffer_points + goal_bonus, 2)
+
+
+def _scenario_selection_reason(row, goal):
+    if row["scenario_key"] == "minimum_growth":
+        if goal == "Գոյատևում" or row["risk_level"] == "Բարձր":
+            return "Լավագույն հավասարակշռությունը իրացվելիության պահպանման և ռիսկի նվազեցման միջև"
+        return "Առաջարկվող սցենար՝ ծախսերի զսպվածության և կանխիկ հոսքի պահպանման համար"
+    if row["scenario_key"] == "rapid_growth":
+        if row["buffer_months"] >= 1.0 and row["expected_profit"] > 0:
+            return "Առաջարկվող սցենար՝ բարձր շահութաբերության և բավարար պահուստի համադրության համար"
+        return "Ընտրվել է աճի ավելի բարձր ներուժի պատճառով, սակայն պահանջում է խիստ վերահսկում"
+    if goal == "Կայունություն":
+        return "Առաջարկվող սցենար՝ կանխատեսելի շահույթի և վերահսկվող ռիսկի համար"
+    return "Առաջարկվող սցենար՝ կայուն աճի և վերահսկվող ռիսկի համար"
+
+
+def _select_recommended_scenario(
+    scenario_rows,
+    goal,
+    overall_risk_level,
+    free_cash,
+    available_capital,
+):
+    max_profit = max((row["expected_profit"] for row in scenario_rows), default=0.0)
+    for row in scenario_rows:
+        row["selection_score"] = _scenario_selection_score(row, goal, max_profit)
+        row["selection_reason"] = _scenario_selection_reason(row, goal)
+
+    candidate_rows = list(scenario_rows)
+    if goal == "Գոյատևում" or overall_risk_level == "Բարձր" or free_cash < 0:
+        candidate_rows = [row for row in scenario_rows if row["scenario_key"] != "rapid_growth"]
+    elif goal == "Աճ" and free_cash < (available_capital * 0.05):
+        candidate_rows = [row for row in scenario_rows if row["scenario_key"] != "rapid_growth"]
+
+    return max(
+        candidate_rows,
+        key=lambda row: (
+            row["selection_score"],
+            row["expected_profit"],
+            row["buffer_months"],
+            -row["risk_score"],
+        ),
+    )
 
 
 def _build_warnings(values, allocations, monthly_fixed_costs, recommended_emergency_reserve, tax_reserve_target):
@@ -555,35 +759,120 @@ def _build_warnings(values, allocations, monthly_fixed_costs, recommended_emerge
     return warnings
 
 
-def _build_recommendations(values, overall_risk_level):
+def _build_recommendations(
+    values,
+    allocations,
+    monthly_fixed_costs,
+    recommended_emergency_reserve,
+    overall_risk_level,
+    stability_profile,
+):
     recommendations = []
     goal = values["business_goal"]
+    activity = values["business_activity"]
     status = values["business_status"]
+    available_capital = values["available_capital"]
+    free_cash = allocations["free_cash"]
+    free_cash_ratio = stability_profile["free_cash_ratio"]
+    reserve_ratio = stability_profile["reserve_ratio"]
+    fixed_cost_ratio = stability_profile["fixed_cost_ratio"]
 
     if goal == "Աճ":
-        recommendations.append("Աճի պլանը փուլավորիր, որպեսզի մարքեթինգի և գնումների բյուջեն չսպառի աշխատանքային կապիտալը։")
+        recommendations.append(
+            "Համակարգը մեծացնում է վերաներդրման և մարքեթինգային բյուջեն՝ բիզնեսի աճի արագացման նպատակով, քանի որ ընտրված նպատակը պահանջում է պահանջարկի և վաճառքի ակտիվ խթանում։"
+        )
     elif goal == "Կայունություն":
-        recommendations.append("Կայունության նպատակի դեպքում պահիր արտակարգ և օպերացիոն բյուջեն առնվազն մեկ ամսվա շեմին մոտ։")
+        recommendations.append(
+            "Համակարգը մեծացնում է արտակարգ և օպերացիոն բյուջեի մասնաբաժինը, որպեսզի բիզնեսը պահպանի կանխատեսելի աշխատանքային ռիթմ և ֆինանսական բուֆեր։"
+        )
     elif goal == "Գոյատևում":
-        recommendations.append("Գոյատևման փուլում կենտրոնացիր հարկային, ֆիքսված և արտակարգ պահուստների վրա, իսկ աճային ծախսերը նվազեցրու։")
+        recommendations.append(
+            "Գոյատևման նպատակի դեպքում համակարգը բարձրացնում է հարկային, ֆիքսված ծախսերի և արտակարգ պահուստների մասնաբաժինը, իսկ մարքեթինգն ու վերաներդրումը սահմանափակում է։"
+        )
     else:
-        recommendations.append("Հավասարակշռված զարգացման համար ամեն ամիս վերանայիր բյուջեի բաշխումը և պահիր ազատ դրամական բուֆեր։")
+        recommendations.append(
+            "Հավասարակշռված զարգացման համար բաշխումը պահում է աճային ուղղությունները ակտիվ, բայց միաժամանակ պահպանում է ռիսկերը մեղմող պահուստներ։"
+        )
+
+    if activity == "Օնլայն խանութ":
+        recommendations.append(
+            "Օնլայն խանութի համար համակարգը մեծացնում է մարքեթինգի և պաշարների բյուջեն, քանի որ վաճառքը կախված է ինչպես ներգրավումից, այնպես էլ արագ համալրումից։"
+        )
+    elif activity == "Ծառայություններ":
+        recommendations.append(
+            "Ծառայությունների ոլորտի համար համակարգը մեծացնում է աշխատավարձային և օպերացիոն բյուջեի մասնաբաժինը, որովհետև սպասարկման որակը հիմնվում է թիմի և ընթացիկ գործընթացների վրա։"
+        )
+    elif activity == "Ձեռագործ արտադրանք":
+        recommendations.append(
+            "Ձեռագործ արտադրանքի դեպքում համակարգը ուժեղացնում է նյութերի և օպերացիոն ծախսերի բյուջեն, որպեսզի պատվերների կատարումը չխաթարվի արտադրական ցիկլով։"
+        )
+    elif activity == "Մանրածախ առևտուր":
+        recommendations.append(
+            "Մանրածախ առևտրի համար բարձրացվում է գնման և օպերացիոն բյուջեի մասնաբաժինը, քանի որ հասանելի պաշարն ու կետային աշխատանքը անմիջապես ազդում են վաճառքի վրա։"
+        )
 
     if status == "Նոր բիզնես":
-        recommendations.append("Նոր բիզնեսի համար պլանը հիմնված է գնահատողական գործակիցների վրա, ուստի առաջին ամիսներին թարմացրու այն փաստացի տվյալներով։")
+        recommendations.append(
+            "Նոր բիզնեսի համար սցենարները հաշվարկվում են գնահատողական գործակիցներով, ուստի առաջին ամիսների փաստացի վաճառքից հետո ցանկալի է վերաթարմացնել պլանը։"
+        )
     elif values["average_monthly_revenue"] is not None:
-        recommendations.append("Գործող բիզնեսի դեպքում համադրիր պլանը միջին ամսական եկամտի փաստացի դինամիկայի հետ։")
+        recommendations.append(
+            "Գործող բիզնեսի դեպքում սցենարային հաշվարկը հենված է մուտքագրված միջին ամսական եկամտի վրա, ինչի շնորհիվ շահույթի և ռիսկի պատկերը դառնում է ավելի իրատեսական։"
+        )
     else:
-        recommendations.append("Գործող բիզնեսի համար ավելացրու միջին ամսական եկամուտը, որպեսզի սցենարային հաշվարկներն ավելի ճշգրիտ լինեն։")
+        recommendations.append(
+            "Քանի որ գործող բիզնեսի միջին եկամուտը չի տրամադրվել, սցենարային գնահատումը պահպանողական է և կարող է թարմացվել փաստացի եկամուտների հիմքով։"
+        )
+
+    if reserve_ratio < 1.0:
+        recommendations.append(
+            "Արտակարգ պահուստը ցածր է առաջարկվող մակարդակից, ինչը կարող է բարձրացնել ֆինանսական ռիսկերը և սահմանափակել արագ արձագանքը ծախսային շոկերին։"
+        )
+    elif reserve_ratio >= 1.2:
+        recommendations.append(
+            "Արտակարգ պահուստը ձևավորվել է առաջարկվող շեմից բարձր, ինչը բարելավում է անսպասելի ծախսերը կլանելու կարողությունը։"
+        )
+
+    if free_cash < 0:
+        recommendations.append(
+            f"Ազատ դրամական մնացորդը դարձել է {format_armenian_dram_value(free_cash)}, ուստի անհրաժեշտ է կրճատել երկրորդական ծախսերը կամ փուլավորել աճային ուղղությունները։"
+        )
+    elif free_cash_ratio < 0.05:
+        recommendations.append(
+            f"Ազատ դրամական բուֆերը պահպանվում է միայն {format_armenian_dram_value(free_cash)} մակարդակում, ինչը սահմանափակում է ակտիվ աճի ռազմավարության արդյունավետ իրականացումը։"
+        )
+    else:
+        recommendations.append(
+            f"Ազատ դրամական մնացորդը {format_armenian_dram_value(free_cash)} է, ինչը ստեղծում է հավելյալ ճկունություն ընթացիկ բյուջեի կառավարման համար։"
+        )
+
+    if fixed_cost_ratio > 0.45:
+        recommendations.append(
+            "Ֆիքսված ծախսերի ծանրաբեռնվածությունը բարձր է հասանելի կապիտալի համեմատ, ուստի համակարգը խիստ զգուշորեն է պահում աճային ուղղությունների բաշխումը։"
+        )
+    elif fixed_cost_ratio > 0.30:
+        recommendations.append(
+            "Ֆիքսված ծախսերը զգալի ճնշում են ստեղծում կապիտալի վրա, և հարկավոր է դրանք համադրել ազատ դրամական բուֆերի հետ ամեն ամսվա վերջում։"
+        )
 
     if overall_risk_level == "Բարձր":
-        recommendations.append("Մինչև ռիսկի նվազեցումը սահմանափակիր վերաներդրումները և ավելացրու ազատ դրամական կամ արտակարգ բուֆերը։")
+        recommendations.append(
+            "Ընդհանուր ռիսկայնությունը բարձր է, ուստի մինչև կայունացման փուլը նպատակահարմար է զսպել վերաներդրումը և պահել ավելի մեծ արտակարգ պահուստ։"
+        )
     elif overall_risk_level == "Միջին":
-        recommendations.append("Վերահսկիր ֆիքսված ծախսերի և հարկային պահուստի հարաբերակցությունը ամեն ամսվա վերջում։")
-    else:
-        recommendations.append("Պահպանիր ընթացիկ բաշխման կարգապահությունը և պարբերաբար վերանայիր հարկային ու արտակարգ պահուստները։")
+        recommendations.append(
+            "Ռիսկի մակարդակը միջին է, այդ պատճառով պլանը պետք է վերահսկել հատկապես հարկային պահուստի, ֆիքսված ծախսերի և ազատ դրամական բուֆերի տեսանկյունից։"
+        )
+    elif stability_profile["stability_label"] == "Կայուն":
+        recommendations.append(
+            "Կայունության գնահատականը բարձր է, ինչը նշանակում է, որ ընթացիկ բաշխումը հնարավոր է պահել առանց կտրուկ վերաձևումների, եթե վաճառքի տեմպը պահպանվի։"
+        )
 
-    return recommendations
+    unique_recommendations = []
+    for message in recommendations:
+        if message not in unique_recommendations:
+            unique_recommendations.append(message)
+    return unique_recommendations
 
 
 def _build_method_notes(revenue_source, fixed_cost_source, variable_cost_source):
@@ -606,7 +895,7 @@ def _build_method_notes(revenue_source, fixed_cost_source, variable_cost_source)
     ]
 
 
-def _allocation_rows(allocations, available_capital):
+def _allocation_rows(allocations, available_capital, values):
     rows = []
     for field_name in ALLOCATION_ORDER:
         amount = allocations[field_name]
@@ -632,6 +921,7 @@ def _allocation_rows(allocations, available_capital):
                 if field_name in {"tax_reserve", "payroll_admin_reserve", "fixed_costs_coverage", "emergency_reserve"}
                 else "adaptive",
                 "importance_label": importance_label,
+                "purpose_description": _allocation_purpose(field_name, values),
             }
         )
     return rows
@@ -857,21 +1147,32 @@ def generate_smart_budget_plan(input_data):
         max((row["risk_score"] for row in scenario_rows), default=int(round(base_risk_score))),
     )
     overall_risk_level = _risk_label(overall_risk_score)
-    recommended_scenario_key = _recommended_scenario_key(
-        values,
+    stability_profile = _calculate_stability_profile(
+        allocations,
+        available_capital,
+        monthly_fixed_costs,
+        emergency_reserve_min,
+        overall_risk_score,
+    )
+    recommended_scenario = _select_recommended_scenario(
+        scenario_rows,
+        values["business_goal"],
         overall_risk_level,
         free_cash,
-        monthly_fixed_costs,
-    )
-
-    recommended_scenario = next(
-        row for row in scenario_rows if row["scenario_key"] == recommended_scenario_key
+        available_capital,
     )
     for row in scenario_rows:
-        row["is_recommended"] = row["scenario_key"] == recommended_scenario_key
+        row["is_recommended"] = row["scenario_key"] == recommended_scenario["scenario_key"]
 
-    recommendations = _build_recommendations(values, overall_risk_level)
-    allocation_rows = _allocation_rows(allocations, available_capital)
+    recommendations = _build_recommendations(
+        values,
+        allocations,
+        monthly_fixed_costs,
+        emergency_reserve_min,
+        overall_risk_level,
+        stability_profile,
+    )
+    allocation_rows = _allocation_rows(allocations, available_capital, values)
     method_notes = _build_method_notes(revenue_source, fixed_cost_source, variable_cost_source)
 
     output_values = dict(values)
@@ -894,7 +1195,11 @@ def generate_smart_budget_plan(input_data):
             "overall_risk_level": overall_risk_level,
             "overall_risk_score": overall_risk_score,
             "sustainability_status": recommended_scenario["sustainability_status"],
+            "stability_label": stability_profile["stability_label"],
+            "stability_score": stability_profile["stability_score"],
+            "stability_reason": stability_profile["stability_reason"],
             "recommended_scenario": recommended_scenario["scenario_name"],
+            "recommended_scenario_reason": recommended_scenario["selection_reason"],
         },
         "allocation_rows": allocation_rows,
         "scenario_rows": scenario_rows,

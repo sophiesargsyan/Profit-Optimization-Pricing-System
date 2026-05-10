@@ -54,6 +54,8 @@ class SmartBudgetPlannerTests(unittest.TestCase):
         )
         self.assertEqual(result["summary"]["planner_name"], "Smart Budget Planner")
         self.assertEqual(result["summary"]["planner_name_hy"], "Խելացի բյուջեի պլանավորում")
+        self.assertIn("stability_score", result["summary"])
+        self.assertIn("recommended_scenario_reason", result["summary"])
 
     def test_new_business_can_work_without_average_monthly_revenue(self):
         result = generate_smart_budget_plan(
@@ -118,6 +120,9 @@ class SmartBudgetPlannerTests(unittest.TestCase):
             growth_allocations["reinvestment_budget"],
             survival_allocations["reinvestment_budget"],
         )
+        self.assertTrue(
+            any("մարքեթինգային բյուջեն" in recommendation for recommendation in growth["recommendations"])
+        )
 
     def test_survival_goal_prioritizes_tax_fixed_costs_and_emergency_reserve(self):
         shared_payload = {
@@ -143,6 +148,8 @@ class SmartBudgetPlannerTests(unittest.TestCase):
             self.assertEqual(survival_rows[field_name]["importance_label"], "Պարտադիր և առաջնային")
             self.assertGreater(survival_allocations[field_name], survival_allocations["marketing_budget"])
             self.assertGreater(survival_allocations[field_name], survival_allocations["reinvestment_budget"])
+        self.assertIn("Հարկային պարտավորությունների ապահովում", survival_rows["tax_reserve"]["purpose_description"])
+        self.assertIn("Ֆինանսական ռիսկերի նվազեցում", survival_rows["emergency_reserve"]["purpose_description"])
 
     def test_organization_type_changes_planning_coefficients(self):
         shared_payload = {
@@ -173,6 +180,10 @@ class SmartBudgetPlannerTests(unittest.TestCase):
             open_joint_stock_allocations["fixed_costs_coverage"],
             sole_proprietor_allocations["fixed_costs_coverage"],
         )
+        self.assertGreater(
+            open_joint_stock["summary"]["stability_score"],
+            0,
+        )
 
     def test_insufficient_capital_emits_negative_free_cash_warning(self):
         result = generate_smart_budget_plan(
@@ -192,6 +203,7 @@ class SmartBudgetPlannerTests(unittest.TestCase):
         self.assertLess(result["summary"]["free_cash"], 0)
         self.assertIn("negative_free_cash", warnings_by_code)
         self.assertIn("ազատ դրամական մնացորդը բացասական է", warnings_by_code["negative_free_cash"])
+        self.assertEqual(result["summary"]["stability_label"], "Ռիսկային")
 
     def test_low_capital_and_high_fixed_costs_trigger_risk_warnings(self):
         result = generate_smart_budget_plan(
@@ -214,6 +226,73 @@ class SmartBudgetPlannerTests(unittest.TestCase):
         self.assertIn("fixed_cost_pressure", warning_codes)
         self.assertIn("growth_goal_high_risk", warning_codes)
         self.assertEqual(result["summary"]["overall_risk_level"], "Բարձր")
+
+    def test_service_activity_changes_allocation_and_recommendation_focus(self):
+        online_shop = generate_smart_budget_plan(
+            {
+                "available_capital": 12000,
+                "organization_type": "ՍՊԸ",
+                "business_activity": "Օնլայն խանութ",
+                "business_status": "Գործող բիզնես",
+                "business_goal": "Հավասարակշռված զարգացում",
+                "average_monthly_revenue": 16000,
+                "fixed_costs": 1800,
+                "variable_costs": 3600,
+                "employees_count": 3,
+            }
+        )
+        services = generate_smart_budget_plan(
+            {
+                "available_capital": 12000,
+                "organization_type": "ՍՊԸ",
+                "business_activity": "Ծառայություններ",
+                "business_status": "Գործող բիզնես",
+                "business_goal": "Հավասարակշռված զարգացում",
+                "average_monthly_revenue": 16000,
+                "fixed_costs": 1800,
+                "variable_costs": 3600,
+                "employees_count": 3,
+            }
+        )
+
+        online_allocations = allocation_map(online_shop)
+        service_allocations = allocation_map(services)
+
+        self.assertGreater(online_allocations["marketing_budget"], service_allocations["marketing_budget"])
+        self.assertGreater(
+            online_allocations["inventory_or_purchase_budget"],
+            service_allocations["inventory_or_purchase_budget"],
+        )
+        self.assertGreater(
+            service_allocations["payroll_admin_reserve"],
+            online_allocations["payroll_admin_reserve"],
+        )
+        self.assertGreater(
+            service_allocations["operational_budget"],
+            online_allocations["operational_budget"],
+        )
+        self.assertTrue(
+            any("Ծառայությունների ոլորտի համար համակարգը մեծացնում է աշխատավարձային" in item for item in services["recommendations"])
+        )
+
+    def test_recommended_scenario_includes_reason_based_on_risk_and_profitability(self):
+        result = generate_smart_budget_plan(
+            {
+                "available_capital": 12000,
+                "organization_type": "ՍՊԸ",
+                "business_activity": "Ծառայություններ",
+                "business_status": "Գործող բիզնես",
+                "business_goal": "Կայունություն",
+                "average_monthly_revenue": 18000,
+                "fixed_costs": 3200,
+                "variable_costs": 4200,
+                "employees_count": 6,
+            }
+        )
+
+        recommended_row = next(row for row in result["scenario_rows"] if row["is_recommended"])
+        self.assertTrue(recommended_row["selection_reason"])
+        self.assertEqual(result["summary"]["recommended_scenario_reason"], recommended_row["selection_reason"])
 
     def test_invalid_inputs_raise_validation_errors(self):
         with self.assertRaisesRegex(ValueError, "Հասանելի կապիտալ"):

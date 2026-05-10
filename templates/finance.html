@@ -151,32 +151,48 @@
                 <span class="risk-pill {{ finance_summary.overall_risk_class }}">{{ finance_summary.overall_risk_level }}</span>
             </div>
 
-            <div class="row g-3 mb-4">
-                <div class="col-md-6 col-xl-3">
+            <div class="row g-3 mb-3 finance-summary-grid">
+                <div class="col-md-4">
                     <div class="metric-card summary-card finance-summary-card">
                         <span class="metric-label">{{ t.get("finance.smartBudget.availableCapital", "Հասանելի կապիտալ") }}</span>
-                        <div class="metric-value">{{ display_currency(finance_summary.available_capital) }}</div>
+                        <div class="metric-value">{{ display_finance_currency(finance_summary.available_capital) }}</div>
                     </div>
                 </div>
-                <div class="col-md-6 col-xl-3">
+                <div class="col-md-4">
                     <div class="metric-card summary-card finance-summary-card">
                         <span class="metric-label">{{ t.get("finance.smartBudget.plannedAllocation", "Պլանավորված բաշխում") }}</span>
-                        <div class="metric-value">{{ display_currency(finance_summary.total_allocated) }}</div>
+                        <div class="metric-value">{{ display_finance_currency(finance_summary.total_allocated) }}</div>
                     </div>
                 </div>
-                <div class="col-md-6 col-xl-3">
+                <div class="col-md-4">
                     <div class="metric-card summary-card finance-summary-card {% if finance_summary.free_cash < 0 %}summary-card-primary{% endif %}">
                         <span class="metric-label">{{ t.get("finance.smartBudget.freeCash", "Ազատ մնացորդ") }}</span>
-                        <div class="metric-value">{{ display_currency(finance_summary.free_cash) }}</div>
+                        <div class="metric-value">{{ display_finance_currency(finance_summary.free_cash) }}</div>
                     </div>
                 </div>
-                <div class="col-md-6 col-xl-3">
-                    <div class="metric-card summary-card summary-card-primary finance-summary-card">
+            </div>
+
+            <div class="app-card summary-card-primary finance-stability-block mb-4">
+                <div class="finance-stability-layout">
+                    <div class="finance-stability-main">
                         <span class="metric-label">{{ t.get("finance.smartBudget.stabilityLevel", "Ֆինանսական կայունության մակարդակ") }}</span>
-                        <div class="metric-value finance-status-value">{{ finance_summary.sustainability_status }}</div>
-                        <p class="metric-note mb-0 mt-2">
+                        <div class="finance-stability-status-row">
+                            <div class="metric-value finance-status-value">{{ finance_summary.stability_label or finance_summary.sustainability_status }}</div>
+                            <span class="risk-pill {{ finance_summary.overall_risk_class }}">{{ finance_summary.overall_risk_level }}</span>
+                        </div>
+                        <p class="metric-note mb-0">{{ finance_summary.stability_reason }}</p>
+                        <p class="metric-note mb-0">
                             {{ t.get("finance.smartBudget.recommendedScenario", "Առաջարկվող սցենար") }}՝ {{ finance_summary.recommended_scenario }}
                         </p>
+                        {% if finance_summary.recommended_scenario_reason %}
+                        <p class="metric-note mb-0">{{ finance_summary.recommended_scenario_reason }}</p>
+                        {% endif %}
+                    </div>
+                    <div class="finance-stability-score-panel">
+                        <div class="finance-stability-score">{{ finance_summary.stability_score }} / 100</div>
+                        <div class="finance-stability-progress" aria-hidden="true">
+                            <span class="finance-stability-progress-bar {{ finance_summary.sustainability_class }}" style="width: {{ finance_summary.stability_score }}%;"></span>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -203,17 +219,9 @@
                             {% for row in allocation_rows %}
                             <tr>
                                 <td data-label="{{ t.get('finance.smartBudget.direction', 'Ուղղություն') }}">{{ t.get(allocation_label_keys.get(row.field_name), row.label) }}</td>
-                                <td class="table-number" data-label="{{ t.get('finance.smartBudget.amount', 'Գումար') }}">{{ display_currency(row.amount) }}</td>
+                                <td class="table-number" data-label="{{ t.get('finance.smartBudget.amount', 'Գումար') }}">{{ display_finance_currency(row.amount) }}</td>
                                 <td class="table-number" data-label="{{ t.get('finance.smartBudget.share', 'Մասնաբաժին') }}">{{ display_percent(row.percentage) }}</td>
-                                <td data-label="{{ t.get('finance.smartBudget.purpose', 'Նշանակություն') }}"><span class="table-meta finance-difference-text">
-                                    {% if row.field_name == "free_cash" %}
-                                    {{ t.get("finance.smartBudget.purpose.flexibility", row.importance_label) }}
-                                    {% elif row.priority_type == "normative" %}
-                                    {{ t.get("finance.smartBudget.purpose.mandatory", row.importance_label) }}
-                                    {% else %}
-                                    {{ t.get("finance.smartBudget.purpose.supporting", row.importance_label) }}
-                                    {% endif %}
-                                </span></td>
+                                <td data-label="{{ t.get('finance.smartBudget.purpose', 'Նշանակություն') }}"><span class="table-meta finance-difference-text">{{ row.purpose_description or row.importance_label }}</span></td>
                             </tr>
                             {% endfor %}
                         </tbody>
@@ -251,10 +259,13 @@
                                         <span class="soft-badge finance-scenario-inline-badge">{{ t.get("finance.smartBudget.recommendedBadge", "Առաջարկվող") }}</span>
                                         {% endif %}
                                     </div>
+                                    {% if row.is_recommended and row.selection_reason %}
+                                    <div class="table-meta finance-scenario-selection-reason">{{ row.selection_reason }}</div>
+                                    {% endif %}
                                 </td>
-                                <td class="table-number" data-label="{{ t.get('finance.smartBudget.revenue', 'Եկամուտ') }}">{{ display_currency(row.expected_revenue) }}</td>
-                                <td class="table-number" data-label="{{ t.get('finance.smartBudget.expenses', 'Ծախսեր') }}">{{ display_currency(row.estimated_expenses) }}</td>
-                                <td class="table-number" data-label="{{ t.get('finance.smartBudget.profit', 'Շահույթ') }}">{{ display_currency(row.expected_profit) }}</td>
+                                <td class="table-number" data-label="{{ t.get('finance.smartBudget.revenue', 'Եկամուտ') }}">{{ display_finance_currency(row.expected_revenue) }}</td>
+                                <td class="table-number" data-label="{{ t.get('finance.smartBudget.expenses', 'Ծախսեր') }}">{{ display_finance_currency(row.estimated_expenses) }}</td>
+                                <td class="table-number" data-label="{{ t.get('finance.smartBudget.profit', 'Շահույթ') }}">{{ display_finance_currency(row.expected_profit) }}</td>
                                 <td data-label="{{ t.get('finance.smartBudget.risk', 'Ռիսկ') }}"><span class="risk-pill {{ row.risk_class }}">{{ row.risk_level }}</span></td>
                                 <td data-label="{{ t.get('finance.smartBudget.stabilityAssessment', 'Կայունության գնահատում') }}">
                                     <span class="risk-pill {{ row.sustainability_class }}">{{ row.sustainability_status }}</span>

@@ -43,6 +43,7 @@ from export_service import history_to_csv, history_to_json, portfolio_analysis_t
 from finance_storage import get_finance_record, upsert_finance_record
 from financial_formatting import (
     build_financial_format_config,
+    format_armenian_dram_value,
     format_currency_value,
     format_number_value,
     format_percent_value,
@@ -682,6 +683,10 @@ def format_currency_display(value, digits=2):
     return format_currency_value(value, _currency_code(), digits)
 
 
+def format_finance_currency_display(value, digits=2):
+    return format_armenian_dram_value(value, digits)
+
+
 def format_percent_display(value, digits=1):
     return format_percent_value(value, digits)
 
@@ -969,6 +974,7 @@ def inject_i18n():
         "switch_language_url": switch_language_url,
         "translate_dynamic": lambda prefix, value: translate_dynamic(g.translations, prefix, value),
         "display_currency": format_currency_display,
+        "display_finance_currency": format_finance_currency_display,
         "display_percent": format_percent_display,
         "display_number": format_number_display,
         "financial_format_config": build_financial_format_config(_currency_code()),
@@ -1265,9 +1271,9 @@ def _risk_class_from_label(label):
 
 
 def _sustainability_class(status_label):
-    if status_label == "Անբավարար":
+    if status_label in {"Անբավարար", "Ռիսկային"}:
         return "risk-high"
-    if status_label == "Սահմանային":
+    if status_label in {"Սահմանային", "Միջին"}:
         return "risk-medium"
     return "risk-low"
 
@@ -1286,12 +1292,26 @@ def _prepare_smart_budget_result(result_payload):
     if not summary:
         return None
 
+    if summary.get("stability_score") is None:
+        fallback_score = 100 - int(summary.get("overall_risk_score", 50) or 50)
+        summary["stability_score"] = max(0, min(fallback_score, 100))
+    if not summary.get("stability_label"):
+        summary["stability_label"] = summary.get("sustainability_status") or "Միջին"
+    if not summary.get("stability_reason"):
+        summary["stability_reason"] = "Բյուջեի կայունությունը պահանջում է պարբերական վերահսկում։"
+    if not summary.get("recommended_scenario_reason"):
+        summary["recommended_scenario_reason"] = ""
+
     summary["overall_risk_class"] = _risk_class_from_label(summary.get("overall_risk_level"))
     summary["sustainability_class"] = _sustainability_class(summary.get("sustainability_status"))
 
     for row in scenario_rows:
+        row.setdefault("selection_reason", "")
         row["risk_class"] = _risk_class_from_label(row.get("risk_level"))
         row["sustainability_class"] = _sustainability_class(row.get("sustainability_status"))
+
+    for row in allocation_rows:
+        row.setdefault("purpose_description", row.get("importance_label", ""))
 
     return {
         "summary": summary,
@@ -1306,16 +1326,28 @@ def _prepare_smart_budget_result(result_payload):
 def _saved_finance_result(record):
     prepared = _prepare_smart_budget_result(record)
     if prepared is not None:
-        return prepared
+        summary = prepared.get("summary") or {}
+        allocation_rows = prepared.get("allocation_rows") or []
+        scenario_rows = prepared.get("scenario_rows") or []
+        has_rich_summary = (
+            summary.get("stability_score") is not None
+            and summary.get("stability_label")
+            and summary.get("recommended_scenario_reason")
+        )
+        has_rich_rows = all(row.get("purpose_description") for row in allocation_rows) and all(
+            row.get("selection_reason") for row in scenario_rows
+        )
+        if has_rich_summary and has_rich_rows:
+            return prepared
 
     input_values = _saved_finance_input_values(record)
     if not _has_complete_smart_budget_inputs(input_values):
-        return None
+        return prepared
 
     try:
         return _prepare_smart_budget_result(generate_smart_budget_plan(input_values))
     except ValueError:
-        return None
+        return prepared
 
 
 def _smart_budget_storage_payload(plan_result):

@@ -21,6 +21,7 @@ from export_service import history_to_csv, history_to_json, portfolio_analysis_t
 from finance_storage import load_finance_records, save_finance_records
 from financial_formatting import (
     EMPTY_DISPLAY,
+    format_armenian_dram_value,
     format_currency_value,
     format_number_value,
     format_percent_value,
@@ -183,6 +184,8 @@ class PricingEngineTests(unittest.TestCase):
         self.assertEqual(format_percent_value(None), EMPTY_DISPLAY)
         self.assertTrue(format_signed_currency_value(125.5, currency_code).startswith("+"))
         self.assertTrue(format_signed_currency_value(-125.5, currency_code).startswith("-"))
+        self.assertEqual(format_armenian_dram_value(1000000), "1 000 000 ֏")
+        self.assertEqual(format_armenian_dram_value(1250.5), "1 250.5 ֏")
 
 
 class WorkspaceStorageTests(unittest.TestCase):
@@ -616,8 +619,6 @@ class FlaskAppTests(unittest.TestCase):
         self.assertNotIn('name="product_cost_budget"', body)
 
     def test_finance_page_renders_smart_budget_results_and_risk_sections(self):
-        currency_code = load_business_dataset().business_settings.currency.upper()
-
         with self.client as client:
             self._sign_up(client)
             response = client.post(
@@ -640,7 +641,7 @@ class FlaskAppTests(unittest.TestCase):
         self.assertIn("Planned allocation", body)
         self.assertIn("Free cash", body)
         self.assertIn("Financial stability level", body)
-        self.assertIn(format_currency_value(1000, currency_code), body)
+        self.assertIn(format_armenian_dram_value(1000), body)
         self.assertIn("Suggested budget allocation", body)
         self.assertIn("Tax reserve", body)
         self.assertIn("Inventory / purchasing", body)
@@ -648,6 +649,8 @@ class FlaskAppTests(unittest.TestCase):
         self.assertIn("Minimum growth scenario", body)
         self.assertIn("Stable development scenario", body)
         self.assertIn("Fast growth scenario", body)
+        self.assertIn("/ 100", body)
+        self.assertIn("վերահսկվող ռիսկի", body)
         self.assertIn('<h2 class="section-title mb-1">Financial risks</h2>', body)
         self.assertIn("Հասանելի կապիտալը պակաս է ամսական ֆիքսված ծախսերից։", body)
         self.assertIn("System recommendations", body)
