@@ -1,98 +1,265 @@
 # PricePilot
 
-PricePilot is a pricing analytics and profit optimization web app for e-commerce teams. It helps founders, operators, and pricing analysts compare pricing strategies, estimate profit impact, review risk, and manage pricing decisions across a product portfolio.
+PricePilot is an automated pricing strategy and financial management system developed as a diploma project for e-commerce businesses.
 
-## What It Does
+The platform helps small and medium-sized business owners analyze pricing decisions, estimate demand and profitability, simulate multiple pricing scenarios, and manage financial planning through a unified web-based system.
 
-- Analyze a single product with six pricing strategies
-- Surface projected revenue, profit, margin, ROI, and break-even metrics
-- Compare outcomes across `LOW`, `NORMAL`, `HIGH`, and `PROMO` market scenarios
-- Keep a portfolio of products with saved pricing assumptions
-- Review decision history and export portfolio or history data
-- Explain recommended pricing moves in clear business language
+The project combines pricing analytics, demand modeling, profit optimization, and smart budget planning to support data-driven business decisions.
 
-## Product Areas
+---
 
-- `/` Landing page with product positioning and value messaging
-- `/analyze` Pricing decision engine for single-product analysis
-- `/portfolio` Multi-product pricing management view
-- `/dashboard` Executive overview of strategy, scenario, and risk signals
-- `/about` Product overview and capability summary
+# Project Goal
 
-## Stack
+The main goal of PricePilot is to improve profitability in electronic business environments by combining:
+
+- pricing strategy analysis,
+- demand sensitivity evaluation,
+- profit optimization,
+- financial planning,
+- and automated decision support tools.
+
+The system was developed as part of the diploma thesis:
+
+> "Study of Profit Maximization Methods in Electronic Business and Development of an Automated Pricing Strategy and Financial Management System"
+
+---
+
+# Main Features
+
+## Pricing Analysis Module
+
+The pricing engine allows users to:
+
+- analyze a product using multiple pricing strategies,
+- evaluate projected profit and revenue,
+- estimate demand changes,
+- calculate contribution margin,
+- simulate pricing scenarios,
+- compare competitor pricing,
+- identify optimal price points,
+- evaluate break-even conditions,
+- and generate business-oriented pricing recommendations.
+
+### Supported Pricing Strategies
+
+- Cost-Plus Pricing
+- Competitive Pricing
+- Demand-Based Pricing
+- Value-Based Pricing
+- Dynamic Pricing
+
+---
+
+## Financial Management Module
+
+The Smart Budget Planner helps businesses:
+
+- plan monthly budgets,
+- distribute financial resources,
+- estimate fixed and variable costs,
+- evaluate operational sustainability,
+- support financial forecasting,
+- and improve financial decision-making.
+
+The module generates automated financial recommendations based on:
+
+- organization type,
+- revenue forecast,
+- operating costs,
+- employee count,
+- and business goals.
+
+---
+
+# System Capabilities
+
+- Automated pricing analysis
+- Demand and profitability modeling
+- Scenario simulation
+- Financial planning
+- Portfolio management
+- Historical analysis tracking
+- Multi-language support
+- Export functionality
+- Responsive user interface
+- Data-driven decision support
+
+---
+
+# Technologies Used
+
+## Backend
 
 - Python
 - Flask
-- HTML
-- CSS
+
+## Frontend
+
+- HTML5
+- CSS3
 - JavaScript
 - Bootstrap 5
+
+## Data & Visualization
+
 - Chart.js
-- JSON-based storage and translations
+- JSON-based storage
 
-## Data Model
+## Localization
 
-- Portfolio data is stored in `data/portfolio.json`
-- Analysis history is stored in `data/history.json`
-- Files are created automatically on first run
-- The app seeds a starter portfolio so the portfolio and dashboard pages have immediate data
+- Armenian
+- English
+- Russian
 
-## Installation
+---
 
-1. Create a virtual environment:
+# Project Structure
+
+```text
+pricing-diploma-system/
+├── app.py
+├── pricing_engine.py
+├── budget_planner.py
+├── financial_formatting.py
+├── export_service.py
+├── history_storage.py
+├── portfolio_storage.py
+├── workspace_service.py
+├── product_defaults.py
+├── data_repository.py
+├── translations/
+├── templates/
+├── static/
+├── data/
+├── tests/
+├── requirements.txt
+└── README.md
+```
+
+---
+
+# Installation
+
+## 1. Clone the Repository
+
+```bash
+git clone https://github.com/sophiesargsyan/Profit-Optimization-Pricing-System.git
+```
+
+## 2. Open the Project
+
+```bash
+cd Profit-Optimization-Pricing-System
+```
+
+## 3. Create a Virtual Environment
 
 ```bash
 python3 -m venv .venv
 ```
 
-2. Activate it:
+## 4. Activate the Environment
+
+### macOS / Linux
 
 ```bash
 source .venv/bin/activate
 ```
 
-3. Install dependencies:
+### Windows
+
+```bash
+.venv\Scripts\activate
+```
+
+## 5. Install Dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
-## Run Locally
+---
 
-From the project root:
+# Run the Application
 
 ```bash
 python3 app.py
 ```
 
-Open:
+Open in browser:
 
 ```text
 http://127.0.0.1:5000
 ```
 
-## Run Tests
+---
+
+# Run Tests
 
 ```bash
 python3 -m unittest discover -s tests
 ```
 
-## Project Structure
+---
 
-```text
-project-root/
-├── app.py
-├── export_service.py
-├── history_storage.py
-├── portfolio_storage.py
-├── product_defaults.py
-├── pricing_engine.py
-├── storage_utils.py
-├── workspace_service.py
-├── requirements.txt
-├── README.md
-├── translations/
-├── templates/
-├── static/
-└── tests/
-```
+# Data Storage
+
+The project uses lightweight JSON-based storage.
+
+Main storage files:
+
+- `data/history.json`
+- `data/portfolio.json`
+- `data/finance.json`
+
+These files are automatically created during the first application run.
+
+---
+
+# Academic Context
+
+This project was developed as a diploma thesis at the National Polytechnic University of Armenia.
+
+The system combines theoretical economic models with practical software implementation, including:
+
+- demand analysis,
+- pricing elasticity,
+- profit optimization,
+- break-even analysis,
+- financial planning,
+- and automated business decision support.
+
+---
+
+# Future Improvements
+
+Planned future enhancements include:
+
+- AI-assisted forecasting
+- Machine learning demand prediction
+- Real-time competitor monitoring
+- Database integration
+- Advanced analytics dashboards
+- Cloud deployment improvements
+- Role-based authentication
+- Business intelligence reporting
+
+---
+
+# Author
+
+Sofi Sargsyan
+
+Information Systems Specialist
+
+GitHub: https://github.com/sophiesargsyan
+
+LinkedIn: https://www.linkedin.com/in/sophiesargsyan
+
+---
+
+# License
+
+This project was developed for educational and research purposes.
+
+All rights reserved © 2026 PricePilot.
