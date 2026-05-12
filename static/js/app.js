@@ -3,9 +3,10 @@ let scenarioChart;
 
 const I18N = window.pricePilotI18n || {};
 const DEFAULT_FORMAT_CONFIG = {
-    currencyCode: "USD",
-    currencySymbol: "USD",
+    currencyCode: "AMD",
+    currencySymbol: "֏",
     currencySpaceBetween: true,
+    currencySymbolPosition: "suffix",
     emptyDisplay: "—",
     defaultCurrencyDigits: 2,
     defaultPercentDigits: 1,
@@ -53,6 +54,10 @@ function formatNumber(value, digits = 2) {
     }).format(amount);
 }
 
+function trimTrailingZeroDecimals(value) {
+    return value.replace(/(\.\d*?)0+$/, "$1").replace(/\.$/, "");
+}
+
 function formatPercent(value, digits = FORMAT_CONFIG.defaultPercentDigits ?? 1) {
     if (isEmptyValue(value)) {
         return FORMAT_CONFIG.emptyDisplay;
@@ -66,9 +71,12 @@ function formatCurrency(value, digits = FORMAT_CONFIG.defaultCurrencyDigits ?? 2
     }
 
     const amount = Number(value);
-    const absoluteAmount = formatNumber(Math.abs(amount), digits);
-    const symbol = FORMAT_CONFIG.currencySymbol || FORMAT_CONFIG.currencyCode || "USD";
-    const body = FORMAT_CONFIG.currencySpaceBetween ? `${symbol} ${absoluteAmount}` : `${symbol}${absoluteAmount}`;
+    const absoluteAmount = trimTrailingZeroDecimals(formatNumber(Math.abs(amount), digits));
+    const symbol = FORMAT_CONFIG.currencySymbol || FORMAT_CONFIG.currencyCode || "֏";
+    const separator = FORMAT_CONFIG.currencySpaceBetween ? " " : "";
+    const body = FORMAT_CONFIG.currencySymbolPosition === "suffix"
+        ? `${absoluteAmount}${separator}${symbol}`
+        : `${symbol}${separator}${absoluteAmount}`;
     return amount < 0 ? `-${body}` : body;
 }
 

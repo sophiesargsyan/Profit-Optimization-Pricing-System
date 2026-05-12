@@ -3,25 +3,24 @@ from __future__ import annotations
 EMPTY_DISPLAY = "—"
 
 _CURRENCY_SYMBOLS = {
-    "USD": "$",
     "EUR": "€",
     "GBP": "£",
-    "AMD": "AMD",
+    "AMD": "֏",
 }
 
 
 def normalize_currency_code(currency_code):
-    return str(currency_code or "USD").upper()
+    return str(currency_code or "AMD").upper()
 
 
 def build_financial_format_config(currency_code):
-    code = normalize_currency_code(currency_code)
-    symbol = _CURRENCY_SYMBOLS.get(code, code)
-    uses_spacing = symbol.isalpha() or len(symbol) > 1
+    code = "AMD"
+    symbol = _CURRENCY_SYMBOLS[code]
     return {
         "currencyCode": code,
         "currencySymbol": symbol,
-        "currencySpaceBetween": uses_spacing,
+        "currencySpaceBetween": True,
+        "currencySymbolPosition": "suffix",
         "emptyDisplay": EMPTY_DISPLAY,
         "defaultCurrencyDigits": 2,
         "defaultPercentDigits": 1,
@@ -66,9 +65,13 @@ def format_currency_value(value, currency_code, digits=2):
         return EMPTY_DISPLAY
 
     config = build_financial_format_config(currency_code)
-    formatted_amount = _format_grouped_amount(amount, digits)
+    formatted_amount = _format_grouped_amount(amount, digits, trim_trailing_zeros=True)
     symbol = config["currencySymbol"]
-    body = f"{symbol} {formatted_amount}" if config["currencySpaceBetween"] else f"{symbol}{formatted_amount}"
+    separator = " " if config["currencySpaceBetween"] else ""
+    if config["currencySymbolPosition"] == "suffix":
+        body = f"{formatted_amount}{separator}{symbol}"
+    else:
+        body = f"{symbol}{separator}{formatted_amount}"
     return f"-{body}" if amount < 0 else body
 
 
@@ -91,7 +94,6 @@ def format_armenian_dram_value(value, digits=2):
     formatted_amount = _format_grouped_amount(
         amount,
         digits,
-        group_separator=" ",
         trim_trailing_zeros=True,
     )
     body = f"{formatted_amount} ֏"

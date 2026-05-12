@@ -184,8 +184,10 @@ class PricingEngineTests(unittest.TestCase):
         self.assertEqual(format_percent_value(None), EMPTY_DISPLAY)
         self.assertTrue(format_signed_currency_value(125.5, currency_code).startswith("+"))
         self.assertTrue(format_signed_currency_value(-125.5, currency_code).startswith("-"))
-        self.assertEqual(format_armenian_dram_value(1000000), "1 000 000 ֏")
-        self.assertEqual(format_armenian_dram_value(1250.5), "1 250.5 ֏")
+        self.assertEqual(format_currency_value(65933, currency_code), "65,933 ֏")
+        self.assertEqual(format_currency_value(1291648, currency_code), "1,291,648 ֏")
+        self.assertEqual(format_armenian_dram_value(1000000), "1,000,000 ֏")
+        self.assertEqual(format_armenian_dram_value(1250.5), "1,250.5 ֏")
 
 
 class WorkspaceStorageTests(unittest.TestCase):
@@ -428,7 +430,6 @@ class FlaskAppTests(unittest.TestCase):
                     self.assertEqual(about_response.status_code, 200)
 
     def test_analyze_page_injects_configured_currency_format(self):
-        currency_code = load_business_dataset().business_settings.currency.upper()
         with self.client as client:
             self._sign_up(client)
             response = client.get("/analyze?lang=en")
@@ -436,7 +437,8 @@ class FlaskAppTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertIn("window.pricePilotFormatting", body)
-        self.assertIn(f'"currencyCode": "{currency_code}"', body)
+        self.assertIn('"currencyCode": "AMD"', body)
+        self.assertIn('"currencySymbol": "\\u058f"', body)
 
     def test_analyze_page_uses_tabbed_workspace_with_empty_inputs(self):
         with self.client as client:
